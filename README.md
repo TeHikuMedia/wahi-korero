@@ -1,7 +1,7 @@
 
 
 # wahi-korero
-This is a tool for identifying and extracting segments of speech in audio.
+This is a tool for identifying and extracting segments of speech in audio. This was built by @craigthelinguist.
 
 The name comes from wāhi, which means "to split" or "to subdivide", and kōrero, meaning "speech".
 
