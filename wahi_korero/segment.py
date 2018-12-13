@@ -10,6 +10,7 @@ Adapted from https://github.com/wiseman/py-webrtcvad/blob/master/example.py
 from collections import deque
 from .exceptions import ConfigError, FormatError
 import json
+import wave
 from os import path
 from .utils import open_audio, _quadraphonic_to_mono
 import webrtcvad
@@ -37,13 +38,14 @@ def default_segmenter():
 class _Frame(object):
     """ Represents a single frame of audio data. """
 
-    def __init__(self, bytes, timestamp, duration_s):
-        self.bytes = bytes
+    def __init__(self, timestamp, duration_s, wr, nf):
+        self.bytes = wr.readframes(nf)
         self.timestamp = timestamp
         self.duration = duration_s
 
     def __str__(self):
-        return "Frame(..., timestamp={}, duration={})".format(self.timestamp, self.duration)
+        return "Frame(..., timestamp={}, duration={})".format(
+            self.timestamp, self.duration)
 
 
 def _frame_generator(frame_duration_ms, audio, overlap_ms=0):
@@ -62,33 +64,20 @@ def _frame_generator(frame_duration_ms, audio, overlap_ms=0):
         raise ValueError("Must have `0 <= overlap_ms < frame_duration_ms`, but have `0 <= {} < {}`."
                          .format(overlap_ms, frame_duration_ms))
 
-    pcm_fps = audio.frame_rate
-    num_channels = audio.channels
-    sample_width = 2  # TODO: make this more general?
-    bytes_per_pcm_frame = sample_width * num_channels
+    wave_reader = audio.get_wave_reader()
 
+    total_frames = wave_reader.getnframes()
     frame_duration_s = frame_duration_ms / 1000.0
-    pcm_frames_per_frame = int(pcm_fps / 1000.0 * frame_duration_ms)
-    bytes_per_frame = int(pcm_frames_per_frame * bytes_per_pcm_frame)
-
     step_duration_s = (frame_duration_ms - overlap_ms) / 1000.0
-    pcm_frames_per_step = int(pcm_fps / 1000.0 * (frame_duration_ms - overlap_ms))
-    bytes_per_step = int(pcm_frames_per_step * bytes_per_pcm_frame)  # how much we increase `offset` per iteration
 
-    offset = 0  # location in the PCM data, stepping in bytes
     timestamp = 0.0  # location in the PCM data, stepping in seconds
-
-    while offset + bytes_per_step < len(audio.raw_data):
-        yield _Frame(audio.raw_data[offset: offset + bytes_per_frame], timestamp, frame_duration_s)
-        offset += bytes_per_step
+    num_frames = int(audio.frame_rate*frame_duration_ms/1000)
+    fp = audio.get_file_path()
+    frame_position = 0
+    while frame_position <= total_frames:
+        yield _Frame(timestamp, frame_duration_s, wave_reader, num_frames)
         timestamp = round(timestamp + step_duration_s, 3)
-
-    # Frames sent to webrtcvad need to have a particular size, so we ignore this last frame which might be a bit smaller
-    # than the others. Another approach would be to pad with zeroes.
-    # if offset < len(audio.raw_data):
-    #    duration_bytes = len(audio.raw_data) - offset
-    #    duration_ms = round(audio.duration_seconds - timestamp, 3)
-    #    yield _Frame(audio.raw_data[offset:offset + duration_bytes], timestamp, duration_ms)
+        frame_position = frame_position + num_frames + 1
 
 
 def frame_stream(frame_duration_ms, audio_fpath, output_audio=False, overlap_ms=0):
@@ -278,29 +267,22 @@ class Segmenter(object):
         :raise FormatError: if the audio can't be transcoded to the appropriate format.
         """
 
-        if audio.channels != 1:
-            if audio.channels == 2:
-                audio = audio.set_channels(1)
-            elif audio.channels == 4:
-                audio = _quadraphonic_to_mono(audio)
-            else:
-                raise FormatError("Don't know how to convert {} channels into 1 channel".format(audio.channels))
-
-        if audio.sample_width != 2:
-            raise FormatError("Can't preprocess audio: sample_width must be 2, but it's {}".format(audio.sample_width))
+        # First turn audio into valid wav pcm
+        audio.set_format(
+            ['-acodec', 'pcm_s16le', '-ac', '1', "-f", "wav"], ext='wav')
 
         valid_sample_rates = (32000, 16000, 8000)
 
         if self.squash_rate is not None:
-            audio = audio.set_frame_rate(self.squash_rate)
+            audio.set_frame_rate(self.squash_rate)
             new_fr = next(fr for fr in reversed(valid_sample_rates) if fr >= audio.frame_rate)
-            audio = audio.set_frame_rate(new_fr)
+            audio.set_frame_rate(new_fr)
         else:
             if audio.frame_rate < 8000:
                 raise FormatError("Frame rate `{}` is too low; I don't know what to do. If you want to preprocess this"
                                   "track, try passing in a `desired_sample_rate`.".format(audio.frame_rate))
             new_fr = next(fr for fr in valid_sample_rates if fr < audio.frame_rate)
-            audio = audio.set_frame_rate(new_fr)
+            audio.set_frame_rate(new_fr)
 
         return audio
 
@@ -392,7 +374,7 @@ class Segmenter(object):
         vad = webrtcvad.Vad(self.aggression)
         segments = self._vad_collector(audio.frame_rate, vad, frames)
         if self.caption_threshold is not None:
-            segments = self._caption_generator(segments, len(audio))
+            segments = self._caption_generator(segments, audio.duration_milliseconds)
             if self.min_caption_len_ms is not None:
                 segments = self._caption_merger(segments)
 
