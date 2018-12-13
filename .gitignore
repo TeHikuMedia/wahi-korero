@@ -33,6 +33,7 @@ var/
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+pip-selfcheck*
 
 # Unit test / coverage reports
 htmlcov/
@@ -74,5 +75,8 @@ ENV/
 # OSX DS_Store
 .DS_Store
 
+bin/
+include/
+output/
 
-
+test.*
