@@ -2,7 +2,7 @@
 from .exceptions import FormatError
 import os
 from os import path
-from pydub import AudioSegment
+from .audiosegment import MyAudioSegment as AudioSegment
 import subprocess
 import tempfile
 
