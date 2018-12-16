@@ -63,6 +63,5 @@ def open_audio(fpath):
     ext = ext.lstrip(".")  # Get rid of leading dot
     if ext not in SUPPORTED_FORMATS:
         raise FormatError("File format {} not supported".format(ext))
-    return AudioSegment.from_file(fpath, format=ext)
-
-
+    audio_segment = AudioSegment(fpath)
+    return audio_segment
