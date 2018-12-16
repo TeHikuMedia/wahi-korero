@@ -8,7 +8,6 @@ as required rather than loading up the whole thing.
 import subprocess
 import os
 import tempfile
-from pydub import AudioSegment
 import wave
 
 
