@@ -9,6 +9,7 @@ import subprocess
 import os
 import tempfile
 import wave
+import errno
 
 
 class MyAudioSegment():
@@ -17,12 +18,25 @@ class MyAudioSegment():
         self.file_path = file_path
         self.use_tmp = False
         self.tmp_file = None
+        self.tmp_dir = None
         self.base_name = os.path.basename(self.file_path)
         self.wave_reader = None
         self.set_durations()
         self.set_channels()
         self.set_frame_rate()
         self.sample_width = 2
+
+    def __del__(self):
+        try:
+            os.remove(self.tmp_file)
+            try:
+                os.rmdir(self.tmp_dir)
+            except OSError as e:
+                if e.errno != errno.ENOENT:
+                    raise e
+
+        except:
+            pass
 
     def from_file(file_path, format=None):
         return MyAudioSegment(file_path)
@@ -87,8 +101,14 @@ class MyAudioSegment():
                 if self.use_tmp:
                     # Delete old tmp file
                     os.remove(self.tmp_file)
+                    try:
+                        os.rmdir(self.tmp_dir)
+                    except OSError as e:
+                        if e.errno != errno.ENOENT:
+                            raise e
 
                 self.tmp_file = tmp_file
+                self.tmp_dir = tmp_dir
                 self.use_tmp = True
                 self.channels = channels
 
@@ -117,7 +137,8 @@ class MyAudioSegment():
                               "-ar", str(rate),
                               tmp_file]
                 print(ffmpeg_cmd)
-                # Redirect stdout and stderr to DEVNULL to silence output. Do explicitly for Python 2 compatibility.
+                # Redirect stdout and stderr to DEVNULL to silence output.
+                # Do explicitly for Python 2 compatibility.
                 with open(os.devnull, "w") as DEVNULL:
                     subprocess.call(ffmpeg_cmd, stdout=DEVNULL, stderr=DEVNULL)
             finally:
@@ -125,8 +146,14 @@ class MyAudioSegment():
                 if self.use_tmp:
                     # Delete old tmp file
                     os.remove(self.tmp_file)
+                    try:
+                        os.rmdir(self.tmp_dir)
+                    except OSError as e:
+                        if e.errno != errno.ENOENT:
+                            raise e
 
                 self.tmp_file = tmp_file
+                self.tmp_dir = tmp_dir
                 self.use_tmp = True
                 self.frame_rate = rate
 
@@ -156,8 +183,14 @@ class MyAudioSegment():
             if self.use_tmp:
                 # Delete old tmp file
                 os.remove(self.tmp_file)
+                try:
+                    os.rmdir(self.tmp_dir)
+                except OSError as e:
+                    if e.errno != errno.ENOENT:
+                        raise e
 
             self.tmp_file = tmp_file
+            self.tmp_dir = tmp_dir
             self.use_tmp = True
 
     def export(self, destination, format='wav'):
