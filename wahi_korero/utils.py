@@ -7,7 +7,10 @@ import subprocess
 import tempfile
 
 # The segmenter is capable of loading these formats. We could probably support more, it depends on ffmpeg.
-SUPPORTED_FORMATS = ["flv", "mp3", "ogg", "wav", "m4a", "mp4", "aac", "flac", "aiff"]
+SUPPORTED_FORMATS = [
+    "flv", "mp3", "ogg", "wav", "m4a", "mp4", "aac", "flac", "aiff",
+    "wma"
+]
 
 
 def _quadraphonic_to_mono(audio):
