@@ -10,7 +10,6 @@ Adapted from https://github.com/wiseman/py-webrtcvad/blob/master/example.py
 from collections import deque
 from .exceptions import ConfigError, FormatError
 import json
-import wave
 from os import path
 from .utils import open_audio, _quadraphonic_to_mono
 import webrtcvad
@@ -119,17 +118,23 @@ def frame_audio(frame_duration_ms, audio_fpath, output_dir, output_audio=True, o
     :return: `None`
     """
     if type(output_dir) != str:
-        raise TypeError("Output directory must be a `str`, but it's a `{}`".format(type(output_dir)))
+        raise TypeError(
+            "Output directory must be a `str`, but it's a `{}`".format(type(output_dir)))
     if not path.exists(output_dir):
-        raise FileNotFoundError("Output directory `{}` doesn't exist.".format(output_dir))
+        raise FileNotFoundError(
+            "Output directory `{}` doesn't exist.".format(output_dir))
     if not path.exists(audio_fpath):
-        raise FileNotFoundError("Input file `{}` doesn't exist.".format(audio_fpath))
+        raise FileNotFoundError(
+            "Input file `{}` doesn't exist.".format(audio_fpath))
     if type(output_audio) is not bool:
-        raise TypeError("`output_audio` flag must be a `bool`, but it's a `{}`".format(type(output_audio)))
+        raise TypeError("`output_audio` flag must be a `bool`, but it's a `{}`".format(
+            type(output_audio)))
     if type(verbose) is not bool:
-        raise TypeError("`verbose` flag must be a `bool`, but it's a `{}`".format(type(verbose)))
+        raise TypeError(
+            "`verbose` flag must be a `bool`, but it's a `{}`".format(type(verbose)))
 
-    fs = frame_stream(frame_duration_ms, audio_fpath, output_audio=output_audio, overlap_ms=overlap_ms)
+    fs = frame_stream(frame_duration_ms, audio_fpath,
+                      output_audio=output_audio, overlap_ms=overlap_ms)
 
     seg_data = _SegData(audio_fpath)
     for i, (seg, audio) in enumerate(fs):
@@ -139,7 +144,8 @@ def frame_audio(frame_duration_ms, audio_fpath, output_dir, output_audio=True, o
             output_fpath = path.join(output_dir, fname)
             if verbose:
                 print("Writing {}".format(output_fpath))
-            audio.export(output_fpath, format="wav").close()  # export returns an open file handle
+            # export returns an open file handle
+            audio.export(output_fpath, format="wav").close()
             additional_kvs["fname"] = fname
         start, end = seg
         seg_data.add(start, end, additional_kvs)
@@ -153,7 +159,8 @@ def frame_audio(frame_duration_ms, audio_fpath, output_dir, output_audio=True, o
 class _SegData(object):
 
     def __init__(self, fpath):
-        self.duration_seconds = round(open_audio(fpath).duration_seconds, 3)  # round to ms
+        self.duration_seconds = round(open_audio(
+            fpath).duration_seconds, 3)  # round to ms
         self.num_segs = 0
         self.track_name = path.basename(fpath)
         self.segments = []
@@ -175,7 +182,8 @@ class _SegData(object):
             if verbose:
                 print("Writing {}".format(output_fpath))
             data = self.to_json()
-            json_file.write(json.dumps(data, indent=2))  # pretty prints to the JSON file; might be inefficient
+            # pretty prints to the JSON file; might be inefficient
+            json_file.write(json.dumps(data, indent=2))
 
     def to_json(self):
         return {
@@ -251,7 +259,8 @@ class Segmenter(object):
             raise ConfigError("threshold_voice_ms ({}) must not be larger than buffer_length_ms ({})"
                               .format(self.threshold_voice_ms, self.buffer_length_ms))
         if self.min_caption_len_ms and not self.caption_threshold:
-            raise ConfigError("min_caption_len_ms is set, but caption_threshold is not.")
+            raise ConfigError(
+                "min_caption_len_ms is set, but caption_threshold is not.")
 
     def _preprocess_audio(self, audio):
         """
@@ -275,13 +284,15 @@ class Segmenter(object):
 
         if self.squash_rate is not None:
             audio.set_frame_rate(self.squash_rate)
-            new_fr = next(fr for fr in reversed(valid_sample_rates) if fr >= audio.frame_rate)
+            new_fr = next(fr for fr in reversed(
+                valid_sample_rates) if fr >= audio.frame_rate)
             audio.set_frame_rate(new_fr)
         else:
             if audio.frame_rate < 8000:
                 raise FormatError("Frame rate `{}` is too low; I don't know what to do. If you want to preprocess this"
                                   "track, try passing in a `desired_sample_rate`.".format(audio.frame_rate))
-            new_fr = next(fr for fr in valid_sample_rates if fr < audio.frame_rate)
+            new_fr = next(fr for fr in valid_sample_rates if fr <
+                          audio.frame_rate)
             audio.set_frame_rate(new_fr)
 
         return audio
@@ -306,7 +317,8 @@ class Segmenter(object):
 
         # We stop/start collecting frames into a segment depending on how much of the buffer is voiced. The precise
         # amount is specified in milliseconds by the user when creating the Segmenter. Figure out how it is in frames.
-        threshold_silence = int(self.threshold_silence_ms / self.frame_duration_ms)
+        threshold_silence = int(
+            self.threshold_silence_ms / self.frame_duration_ms)
         threshold_voice = int(self.threshold_voice_ms / self.frame_duration_ms)
 
         # Track whether or not we are currently gathering frames into a segment.
@@ -374,7 +386,8 @@ class Segmenter(object):
         vad = webrtcvad.Vad(self.aggression)
         segments = self._vad_collector(audio.frame_rate, vad, frames)
         if self.caption_threshold is not None:
-            segments = self._caption_generator(segments, audio.duration_milliseconds)
+            segments = self._caption_generator(
+                segments, audio.duration_milliseconds)
             if self.min_caption_len_ms is not None:
                 segments = self._caption_merger(segments)
 
@@ -399,15 +412,20 @@ class Segmenter(object):
         :raise TypeError: if arguments of the wrong type have been passed to this function.
         """
         if type(output_dir) != str:
-            raise TypeError("Output directory must be a `str`, but it's a `{}`".format(type(output_dir)))
+            raise TypeError(
+                "Output directory must be a `str`, but it's a `{}`".format(type(output_dir)))
         if not path.exists(output_dir):
-            raise FileNotFoundError("Output directory `{}` doesn't exist.".format(output_dir))
+            raise FileNotFoundError(
+                "Output directory `{}` doesn't exist.".format(output_dir))
         if not path.exists(audio_fpath):
-            raise FileNotFoundError("Input file `{}` doesn't exist.".format(audio_fpath))
+            raise FileNotFoundError(
+                "Input file `{}` doesn't exist.".format(audio_fpath))
         if type(output_audio) is not bool:
-            raise TypeError("`output_audio` flag must be a `bool`, but it's a `{}`".format(type(output_audio)))
+            raise TypeError("`output_audio` flag must be a `bool`, but it's a `{}`".format(
+                type(output_audio)))
         if type(verbose) is not bool:
-            raise TypeError("`verbose` flag must be a `bool`, but it's a `{}`".format(type(verbose)))
+            raise TypeError(
+                "`verbose` flag must be a `bool`, but it's a `{}`".format(type(verbose)))
 
         stream = self.segment_stream(audio_fpath, output_audio)
 
@@ -419,7 +437,8 @@ class Segmenter(object):
                 output_fpath = path.join(output_dir, fname)
                 if verbose:
                     print("Writing {}".format(output_fpath))
-                audio.export(output_fpath, format="wav").close()  # export returns an open file handle
+                # export returns an open file handle
+                audio.export(output_fpath, format="wav").close()
                 additional_kvs["fname"] = fname
             start, end = seg
             seg_data.add(start, end, additional_kvs)
@@ -432,7 +451,8 @@ class Segmenter(object):
     def _caption_generator(self, segment_stream, track_length_ms):
 
         if self.caption_threshold is None:
-            raise ValueError("Trying to call _caption_generator, but Segmenter doesn't have captioning enabled.")
+            raise ValueError(
+                "Trying to call _caption_generator, but Segmenter doesn't have captioning enabled.")
 
         threshold = self.caption_threshold / 1000  # convert to seconds
         caption = 0, next(segment_stream)[1]
@@ -443,7 +463,8 @@ class Segmenter(object):
             if distance < threshold:
                 caption = caption[0], seg[1]
             else:
-                half_distance = float(distance) / 2  # half goes to previous segment, half to next
+                # half goes to previous segment, half to next
+                half_distance = float(distance) / 2
                 caption = caption[0], caption[1] + half_distance
                 yield caption
                 caption = seg[0] - half_distance, seg[1]
@@ -455,7 +476,8 @@ class Segmenter(object):
     def _caption_merger(self, caption_gen):
 
         if self.min_caption_len_ms is None:
-            raise ValueError("Trying to call _caption_merger, but Segmenter doesn't have `min_caption_len_ms` set.")
+            raise ValueError(
+                "Trying to call _caption_merger, but Segmenter doesn't have `min_caption_len_ms` set.")
 
         min_len = self.min_caption_len_ms / 1000  # convert to seconds
         caption = next(caption_gen)
@@ -493,7 +515,8 @@ class Segmenter(object):
             raise ConfigError("`enable_captioning` must be called with `min_caption_len_ms` as an `int`, but it is `{}`"
                               .format(min_caption_len_ms))
         self.caption_threshold = float(caption_threshold_ms)
-        self.min_caption_len_ms = float(min_caption_len_ms) if min_caption_len_ms is not None else None
+        self.min_caption_len_ms = float(
+            min_caption_len_ms) if min_caption_len_ms is not None else None
 
     def disable_captioning(self):
         """ Disables captioning on this segmenter. Captioning can be turned on with `enable_captioning`. """

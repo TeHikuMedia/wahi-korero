@@ -2,14 +2,14 @@
 from .exceptions import FormatError
 import os
 from os import path
-from .audiosegment import MyAudioSegment as AudioSegment
+from .audiosegment import MyAudioSegment
 import subprocess
 import tempfile
 
 # The segmenter is capable of loading these formats. We could probably support more, it depends on ffmpeg.
 SUPPORTED_FORMATS = [
-    "flv", "mp3", "ogg", "wav", "m4a", "mp4", "aac", "flac", "aiff",
-    "wma"
+    "flv", "mp3", "ogg", "wav", "m4a", "mp4",
+    "aac", "flac", "aiff", "wma"
 ]
 
 
@@ -41,6 +41,8 @@ def _quadraphonic_to_mono(audio):
     finally:
         os.remove(fpath_in)
         os.remove(fpath_out)
+        fd_in.close()
+        fd_out.close()
 
 
 def is_format_supported(ext):
@@ -59,12 +61,12 @@ def open_audio(fpath):
 
     :param fpath:
     :return: an `AudioSegment` object.
-    :raises FormatError: if the file is in an unrecognisable format.
+    :raises FormatError: if the file is in an unrecognizable format.
     """
 
     _, ext = path.splitext(fpath)  # Determine file type from extension.
     ext = ext.lstrip(".")  # Get rid of leading dot
     if ext not in SUPPORTED_FORMATS:
         raise FormatError("File format {} not supported".format(ext))
-    audio_segment = AudioSegment(fpath)
+    audio_segment = MyAudioSegment(fpath)
     return audio_segment

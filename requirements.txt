@@ -1,2 +1,4 @@
-pydub==0.22.1
-webrtcvad==2.0.10
+pydub==0.25.1
+webrtcvad-wheels==2.0.11.post1
+python-ffmpeg==2.0.1
+pytest
