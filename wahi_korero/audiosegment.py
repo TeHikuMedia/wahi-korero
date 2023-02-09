@@ -27,6 +27,9 @@ class MyAudioSegment():
         self.sample_width = 2
 
     def __del__(self):
+        if self.wave_reader:
+            self.wave_reader.close()
+
         try:
             os.remove(self.tmp_file)
             try:
