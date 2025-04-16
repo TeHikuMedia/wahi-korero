@@ -368,19 +368,18 @@ class Segmenter(object):
             # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
             # frames currently in the buffer are part of this new segment.
             if not collecting_voiced_frames:
-                buffer.append((frame, is_speech))
-                
+                buffer.append((frame, is_speech))    
                 silence_frames.append(frame)
-                if len(silence_frames)*frame.duration == self.segment_limit:
-                    yield silence_frames[0].timestamp, silence_frames[-1].timestamp
-                    silence_frames = []
-                    buffer.clear()
-
+            
                 num_voiced = len([f for f, spoken in buffer if spoken])
                 if num_voiced > 0:
                     silence_frames = []
 
-                #print(len(buffer))
+                if len(silence_frames)*frame.duration == self.segment_limit and num_voiced == 0:
+                    yield silence_frames[0].timestamp, silence_frames[-1].timestamp
+                    silence_frames = []
+                    buffer.clear()
+
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
                     for f, _ in buffer:
