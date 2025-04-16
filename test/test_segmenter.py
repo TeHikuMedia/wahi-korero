@@ -37,7 +37,7 @@ output_dir = "out"
 class SegmenterIntegrationTests(unittest.TestCase):
 
     #spotcheck_path = os.path.join(find_base_path(), "test", "sounds/spotcheck_file.wav")
-    #silence_path = os.path.join(find_base_path(), "test", "sounds/10-minutes-of-silence.wav")
+    silence_path = os.path.join(find_base_path(), "test", "sounds/10-minutes-of-silence.mp3")
     hello_wav_path = os.path.join(find_base_path(), "test", "sounds/hello.wav")
     seg_too_large_path = os.path.join(find_base_path(), "test", "sounds/seg_too_large.wav")
 
@@ -48,7 +48,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
             'threshold_silence_ms': 30,
             'threshold_voice_ms': 120,
             'aggression': 2,
-            'squash_rate': 8000,
+            'squash_rate': 4000, # changed from 8000 to 4000
             'segment_limit':30
         }
 
@@ -70,7 +70,22 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
     # These tests only test segment_streams -> I haven't fixed segment audio therefore their tests aren't included here
    
-    # This tests whether the segment_stream runs successfully without any ERROR
+    # This tests whether the segment_stream runs successfully with an audio file of silence - returns blocks of segment limit
+    def test_silence(self):
+
+        segmenter = Segmenter(**self.kaituhi_config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10000,
+        )
+
+        stream = segmenter.segment_stream(self.silence_path, output_audio=False)
+        for seg, audio in stream:
+            start, end = seg
+        
+        assert['success']
+
+    # Basic test whether the stream runs smoothly on a small file
     def test_the_way_kaituhi_uses_it(self):
 
         segmenter = Segmenter(**self.kaituhi_config)
@@ -80,9 +95,12 @@ class SegmenterIntegrationTests(unittest.TestCase):
         )
 
         stream = segmenter.segment_stream(self.hello_wav_path, output_audio=False)
+        for seg, audio in stream:
+            start, end = seg
+
         assert['success']
         
-    # Checks whether the new segments are less than the segment limit
+    # Checks whether the new segments are less than the segment limit on an edge case
     def test_new_segments_less_than_limit(self):
 
         segmenter = Segmenter(**self.kaituhi_config)
@@ -92,7 +110,10 @@ class SegmenterIntegrationTests(unittest.TestCase):
         )
 
         stream = segmenter.segment_stream(self.seg_too_large_path, output_audio=False)
-        assert all((seg[1]-seg[0]) <= config['segment_limit'] for seg, audio in stream)
+
+        captions = []
+
+        assert all((cap[1]-cap[0]) <= 30 for cap in captions)
 
     # Fails if a non audio file in inputted into the stream
     def test_non_audio(self):

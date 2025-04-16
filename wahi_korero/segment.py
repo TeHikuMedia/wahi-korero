@@ -358,7 +358,7 @@ class Segmenter(object):
 
         # Holds the frames being gathered into a segment.
         voiced_frames = []
-
+        silence_frames = []
         for i, frame in enumerate(frames):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
@@ -369,7 +369,18 @@ class Segmenter(object):
             # frames currently in the buffer are part of this new segment.
             if not collecting_voiced_frames:
                 buffer.append((frame, is_speech))
+                
+                silence_frames.append(frame)
+                if len(silence_frames)*frame.duration == self.segment_limit:
+                    yield silence_frames[0].timestamp, silence_frames[-1].timestamp
+                    silence_frames = []
+                    buffer.clear()
+
                 num_voiced = len([f for f, spoken in buffer if spoken])
+                if num_voiced > 0:
+                    silence_frames = []
+
+                #print(len(buffer))
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
                     for f, _ in buffer:
@@ -493,12 +504,13 @@ class Segmenter(object):
             if self.min_caption_len_ms is not None:
                 segments = self._caption_merger(segments)
 
-        
+    
         for segment in segments:
             # This decides whether it requires another pass to split a segment too large
+            
             seg_time_diff = segment[1] - segment[0]
-
             if seg_time_diff > self.segment_limit:
+            
                 sub_og_audio = open_audio(audio_fpath)
                 sub_audio = self._preprocess_audio(sub_og_audio)
 
@@ -590,13 +602,13 @@ class Segmenter(object):
         yield caption
 
     def _caption_merger(self, caption_gen):
-
+        
         if self.min_caption_len_ms is None:
             raise ValueError("Trying to call _caption_merger, but Segmenter doesn't have `min_caption_len_ms` set.")
 
         min_len = self.min_caption_len_ms / 1000  # convert to seconds
         caption = next(caption_gen)
-
+ 
         for caption2 in caption_gen:
             if caption[1] - caption[0] >= min_len:
                 yield caption
