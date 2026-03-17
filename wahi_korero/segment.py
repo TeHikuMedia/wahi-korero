@@ -445,9 +445,21 @@ class Segmenter(object):
 
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
-                    for f, _ in buffer:
+
+                    if (
+                        len(silence_frames) * frame.duration
+                        >= self.max_caption_len_seconds * 0.5
+                    ):
+                        f = silence_frames.pop()
+                        yield silence_frames[0].timestamp, silence_frames[-1].timestamp
+                        silence_frames = []
                         voiced_frames.append(f)
-                    buffer.clear()
+                        buffer.clear()
+                    else:
+
+                        for f, _ in buffer:
+                            voiced_frames.append(f)
+                        buffer.clear()
 
             # If enough of the buffer is unvoiced, we've reached the end of this segment. Yield the data we've gathered
             # so far and reset the above variables.
@@ -497,10 +509,8 @@ class Segmenter(object):
 
         # Holds the frames being gathered into a segment.
         voiced_frames = []
-        # print(start_time, end_time)
-        nuv = 0
-        nv = 0
-        for i, frame in enumerate(frames):
+
+        for _, frame in enumerate(frames):
 
             if frame.timestamp >= end_time:
                 break
