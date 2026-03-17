@@ -424,6 +424,9 @@ class Segmenter(object):
         # Holds the frames being gathered into a segment.
         voiced_frames = []
         silence_frames = []
+        silence_segment_min_duration = self.max_caption_len_seconds * 0.5
+        if self.min_caption_len_ms:
+            silence_segment_min_duration = self.min_caption_len_ms / 1000
         for i, frame in enumerate(frames):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
@@ -445,10 +448,9 @@ class Segmenter(object):
 
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
-
                     if (
                         len(silence_frames) * frame.duration
-                        >= self.max_caption_len_seconds * 0.5
+                        >= silence_segment_min_duration
                     ):
                         f = silence_frames.pop()
                         yield silence_frames[0].timestamp, silence_frames[-1].timestamp
@@ -456,7 +458,6 @@ class Segmenter(object):
                         voiced_frames.append(f)
                         buffer.clear()
                     else:
-
                         for f, _ in buffer:
                             voiced_frames.append(f)
                         buffer.clear()

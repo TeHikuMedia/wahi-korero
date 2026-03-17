@@ -105,8 +105,8 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(start, end)
 
         assert caps[0]["end"] == caps[1]["start"]
-        assert caps[1]["end"] == 5.145
-        assert caps[2]["start"] == 5.145
+        assert caps[1]["end"] == 1.5150000000000001
+        assert caps[2]["start"] == 1.5150000000000001
 
     def test_5_min_silence(self):
         MAX_LEN = 100
