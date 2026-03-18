@@ -6,14 +6,73 @@ as required rather than loading up the whole thing.
 
 """
 
-import subprocess
+import errno
 import os
+import subprocess
 import tempfile
 import wave
-import errno
 
 
-class MyAudioSegment:
+class SubAudioSegment:
+    """Literally a slice of an audio file"""
+
+    def __init__(self, file_path, start, stop):
+        self.stop = stop
+        self.start = start
+        self.file_path = file_path
+
+    def get_file_path(self):
+        return self.file_path
+
+    def export(self, destination, audio_format="wav"):
+        """
+        Export the audio file from one format to another.
+        This uses ffmpeg and *should* work with any input file
+        :param destination: (required) path to save file to
+        :param format: (default=wave) format to convert audio to
+        :result destination of exported file
+        """
+
+        # Ensure destination has proper extension
+        dest, ext = os.path.splitext(destination)
+        ext = ext.lstrip(".")  # Get rid of leading dot
+
+        if audio_format == "wav":
+            if ext != "wav":
+                destination = dest + ".wav"
+
+        if self.start and self.stop:
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                self.get_file_path(),
+                "-ss",
+                str(self.start / 1000),
+                "-t",
+                str((self.stop - self.start) / 1000),
+                "-f",
+                "wav",
+                destination,
+            ]
+        else:
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                self.get_file_path(),
+                "-f",
+                "wav",
+                destination,
+            ]
+        print(" ".join(ffmpeg_cmd))
+        out = subprocess.run(ffmpeg_cmd, capture_output=True)
+
+        # then this just works?
+        return destination
+
+
+class MyAudioSegment(SubAudioSegment):
 
     def __init__(self, file_path, **kwargs):
         self.file_path = file_path
@@ -26,6 +85,8 @@ class MyAudioSegment:
         self.set_channels()
         self.set_frame_rate()
         self.sample_width = 2
+        self.start = None
+        self.stop = None
 
     def __del__(self):
         try:
@@ -36,7 +97,7 @@ class MyAudioSegment:
                 if e.errno != errno.ENOENT:
                     raise e
 
-        except:
+        except Exception:
             pass
 
     def from_file(file_path, format=None):
@@ -52,7 +113,7 @@ class MyAudioSegment:
             return self.tmp_file
 
     def get_duration_seconds(self):
-        return self.duration_se
+        return self.duration_seconds
 
     def set_durations(self):
 
@@ -72,9 +133,26 @@ class MyAudioSegment:
         )
 
         output, errors = p.communicate()
-        print(output)
         self.duration_seconds = float(output)
         self.duration_milliseconds = float(output) * 1000.0
+
+    def __len__(self):
+        # So making indexes milliseconds
+        return int(self.duration_milliseconds)
+
+    def __setitem__(self, index, item):
+        # Do not implement
+        return None
+
+    def __getitem__(self, index):
+        # If milliseconds are indexes, then this is a slice of audio.
+        # Only accept slices for now.
+        if isinstance(index, slice):
+            # Return audio from start to stop!
+            print(index.start, index.stop)
+            sub_segment = SubAudioSegment(self.get_file_path(), index.start, index.stop)
+            return sub_segment
+        return None
 
     def set_channels(self, channels=None):
         if not channels:
@@ -94,7 +172,6 @@ class MyAudioSegment:
             p = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
             output, errors = p.communicate()
-            print(output)
             self.channels = int(output)
         else:
             # Convert audio to new channel amount
@@ -112,7 +189,6 @@ class MyAudioSegment:
                     tmp_file,
                 ]
 
-                print(ffmpeg_cmd)
                 # Redirect stdout and stderr to DEVNULL to silence output. Do explicitly for Python 2 compatibility.
                 with open(os.devnull, "w") as DEVNULL:
                     subprocess.call(ffmpeg_cmd, stdout=DEVNULL, stderr=DEVNULL)
@@ -147,9 +223,7 @@ class MyAudioSegment:
                 self.get_file_path(),
             ]
             p = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            print(command)
             output, errors = p.communicate()
-            print(output)
             self.frame_rate = int(output)
         else:
             # Convert audio to new frame rate
@@ -166,7 +240,6 @@ class MyAudioSegment:
                     str(rate),
                     tmp_file,
                 ]
-                print(ffmpeg_cmd)
                 # Redirect stdout and stderr to DEVNULL to silence output.
                 # Do explicitly for Python 2 compatibility.
                 with open(os.devnull, "w") as DEVNULL:
@@ -211,7 +284,6 @@ class MyAudioSegment:
                 + [tmp_file]
             )
 
-            print(ffmpeg_cmd)
             # Redirect stdout and stderr to DEVNULL to silence output. Do explicitly for Python 2 compatibility.
             with open(os.devnull, "w") as DEVNULL:
                 subprocess.call(ffmpeg_cmd, stdout=DEVNULL, stderr=DEVNULL)
@@ -229,31 +301,6 @@ class MyAudioSegment:
             self.tmp_file = tmp_file
             self.tmp_dir = tmp_dir
             self.use_tmp = True
-
-    def export(self, destination, format="wav"):
-        """
-        Export the audio file from one format to another.
-        This uses ffmpeg and *should* work with any input file
-        :param destination: (required) path to save file to
-        :param format: (default=wave) format to convert audio to
-        :result destination of exported file
-        """
-
-        # Ensure desitnation has proper extention
-        dest, ext = os.path.splitext(destination)
-        ext = ext.lstrip(".")  # Get rid of leading dot
-
-        if fmt is "wav":
-            if ext is not "wav":
-                desitnation = dest + ".wav"
-
-        ffmpeg_cmd = ["ffmpeg", "-y", "-i", self.fpath, "-f", "wav", destination]
-
-        with open(os.devnull, "w") as DEVNULL:
-            subprocess.call(ffmpeg_cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-        # then this just works?
-        return destination
 
     def get_wave_reader(self):
         """Return a wave_reader. This is usefule for webrtcvad. We

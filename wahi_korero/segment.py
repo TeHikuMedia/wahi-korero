@@ -1,19 +1,15 @@
-from __future__ import absolute_import, division, print_function
-
-if hasattr(__builtins__, "raw_input"):
-    input = raw_input
-
 """
 Adapted from https://github.com/wiseman/py-webrtcvad/blob/master/example.py
 """
 
-from collections import deque
-from .exceptions import ConfigError, FormatError
 import json
-import wave
+from collections import deque
 from os import path
-from .utils import open_audio, _quadraphonic_to_mono
+
 import webrtcvad
+
+from .exceptions import ConfigError, FormatError
+from .utils import open_audio
 
 # Default parameters that you can use to create your own `Segmenter` objects.
 DEFAULT_CONFIG = {
@@ -23,7 +19,7 @@ DEFAULT_CONFIG = {
     "buffer_length_ms": 300,
     "aggression": 3,
     "squash_rate": 4000,
-    "segment_limit": 30,
+    "max_caption_len_seconds": 30,
 }
 
 
@@ -210,9 +206,7 @@ def frame_audio(
             output_fpath = path.join(output_dir, fname)
             if verbose:
                 print("Writing {}".format(output_fpath))
-            audio.export(
-                output_fpath, format="wav"
-            ).close()  # export returns an open file handle
+            audio.export(output_fpath, audio_format="wav")
             additional_kvs["fname"] = fname
         start, end = seg
         seg_data.add(start, end, additional_kvs)
@@ -302,7 +296,7 @@ class Segmenter(object):
         squash_rate=None,
         caption_threshold=None,
         min_caption_len_ms=None,
-        segment_limit=30,
+        max_caption_len_seconds=30,
     ):
 
         self.frame_duration_ms = frame_duration_ms
@@ -313,7 +307,7 @@ class Segmenter(object):
         self.squash_rate = squash_rate
         self.caption_threshold = caption_threshold
         self.min_caption_len_ms = min_caption_len_ms
-        self.segment_limit = segment_limit
+        self.max_caption_len_seconds = max_caption_len_seconds
         self._check_parameters()
 
     def _check_parameters(self):
@@ -425,6 +419,9 @@ class Segmenter(object):
         # Holds the frames being gathered into a segment.
         voiced_frames = []
         silence_frames = []
+        silence_segment_min_duration = self.max_caption_len_seconds * 0.5
+        if self.min_caption_len_ms:
+            silence_segment_min_duration = self.min_caption_len_ms / 1000
         for i, frame in enumerate(frames):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
@@ -438,22 +435,28 @@ class Segmenter(object):
                 silence_frames.append(frame)
 
                 num_voiced = len([f for f, spoken in buffer if spoken])
-                if num_voiced > 0:
-                    silence_frames = []
 
-                if (
-                    len(silence_frames) * frame.duration == self.segment_limit
-                    and num_voiced == 0
-                ):
+                if len(silence_frames) * frame.duration >= self.max_caption_len_seconds:
                     yield silence_frames[0].timestamp, silence_frames[-1].timestamp
                     silence_frames = []
                     buffer.clear()
 
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
-                    for f, _ in buffer:
+                    if (
+                        len(silence_frames) * frame.duration
+                        >= silence_segment_min_duration
+                    ):
+                        f = silence_frames.pop()
+                        yield silence_frames[0].timestamp, silence_frames[-1].timestamp
+                        silence_frames = []
                         voiced_frames.append(f)
-                    buffer.clear()
+                        buffer.clear()
+                    else:
+                        for f, _ in buffer:
+                            voiced_frames.append(f)
+                        buffer.clear()
+
             # If enough of the buffer is unvoiced, we've reached the end of this segment. Yield the data we've gathered
             # so far and reset the above variables.
             else:
@@ -502,10 +505,8 @@ class Segmenter(object):
 
         # Holds the frames being gathered into a segment.
         voiced_frames = []
-        # print(start_time, end_time)
-        nuv = 0
-        nv = 0
-        for i, frame in enumerate(frames):
+
+        for _, frame in enumerate(frames):
 
             if frame.timestamp >= end_time:
                 break
@@ -576,7 +577,7 @@ class Segmenter(object):
             # This decides whether it requires another pass to split a segment too large
 
             seg_time_diff = segment[1] - segment[0]
-            if seg_time_diff > self.segment_limit:
+            if seg_time_diff > self.max_caption_len_seconds:
 
                 sub_og_audio = open_audio(audio_fpath)
                 sub_audio = self._preprocess_audio(sub_og_audio)
@@ -604,7 +605,7 @@ class Segmenter(object):
                     yield segment, None
                 else:
                     # If True change up
-                    yield segment, None  # og_audio[segment[0] * 1000: segment[1] * 1000]
+                    yield segment, og_audio[segment[0] * 1000 : segment[1] * 1000]
 
     def segment_audio(self, audio_fpath, output_dir, output_audio=True, verbose=True):
         """
@@ -655,9 +656,7 @@ class Segmenter(object):
                 output_fpath = path.join(output_dir, fname)
                 if verbose:
                     print("Writing {}".format(output_fpath))
-                audio.export(
-                    output_fpath, format="wav"
-                ).close()  # export returns an open file handle
+                audio.export(output_fpath, audio_format="wav")
                 additional_kvs["fname"] = fname
             start, end = seg
             seg_data.add(start, end, additional_kvs)
@@ -701,7 +700,11 @@ class Segmenter(object):
             )
 
         min_len = self.min_caption_len_ms / 1000  # convert to seconds
-        caption = next(caption_gen)
+
+        try:
+            caption = next(caption_gen, None)
+        except StopIteration:
+            yield caption_gen
 
         for caption2 in caption_gen:
             if caption[1] - caption[0] >= min_len:

@@ -1,11 +1,11 @@
 name = "wahi_korero"
 
 from .segment import (
-    ConfigError,
     DEFAULT_CONFIG,
-    default_segmenter,
+    ConfigError,
     FormatError,
     Segmenter,
+    default_segmenter,
     frame_audio,
     frame_stream,
 )
