@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="wahi-korero",
-    version="v0.6.0",
+    version="v0.7.2",
     description="A tool for identifying and extracting segments of speech in audio.",
     url="https://github.com/TeHikuMedia/wahi-korero",
     author="@craigthelinguist, @kmahelona",

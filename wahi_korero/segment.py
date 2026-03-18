@@ -570,6 +570,7 @@ class Segmenter(object):
                     caption = seg
                 else:
                     caption = caption[0], seg[1], seg[2]
+
             else:
                 # Both captions voiced
                 if caption[2] and seg[2]:
@@ -582,9 +583,16 @@ class Segmenter(object):
 
                 # left not voiced, right voiced, all goes to previous
                 elif not caption[2] and seg[2]:
-                    caption = caption[0], seg[0], seg[2]
-                    yield caption
-                    caption = seg[0], seg[1], seg[2]
+                    if (
+                        self.max_caption_len_ms
+                        and seg[0] - caption[0] > self.max_caption_len_ms / 1000
+                    ):
+                        yield caption
+                        caption = seg
+                    else:
+                        caption = caption[0], seg[0], seg[2]
+                        yield caption
+                        caption = seg[0], seg[1], seg[2]
 
                 # left voiced, right not voiced
                 elif caption[2] and not seg[2]:
@@ -599,6 +607,7 @@ class Segmenter(object):
                         and seg[1] - caption[0] > self.max_caption_len_ms / 1000
                     ):
                         # right merge
+
                         caption = caption[0], caption[1], caption[2]
                         yield caption
                         caption = caption[1], seg[0], seg[2]
