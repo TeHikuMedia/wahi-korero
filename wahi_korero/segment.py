@@ -16,16 +16,15 @@ from .utils import open_audio, _quadraphonic_to_mono
 import webrtcvad
 
 # Default parameters that you can use to create your own `Segmenter` objects.
-DEFAULT_CONFIG = \
-    {
-        "frame_duration_ms": 10,
-        "threshold_silence_ms": 30,
-        "threshold_voice_ms": 270,
-        "buffer_length_ms": 300,
-        "aggression": 3,
-        "squash_rate": 4000,
-        'segment_limit':30
-    }
+DEFAULT_CONFIG = {
+    "frame_duration_ms": 10,
+    "threshold_silence_ms": 30,
+    "threshold_voice_ms": 270,
+    "buffer_length_ms": 300,
+    "aggression": 3,
+    "squash_rate": 4000,
+    "segment_limit": 30,
+}
 
 
 def default_segmenter():
@@ -61,8 +60,8 @@ def _frame_generator(frame_duration_ms, audio, overlap_ms=0):
 
     # NOTE: PCM audio is made up of a collection of what it calls frames, each of which contains one sample per
     # channel (where the size of a sample is `sample_width`). To avoid confusion, we call these `PCM frames`.
-    
-    # TODO check frame sizes 
+
+    # TODO check frame sizes
 
     if overlap_ms < 0 or overlap_ms >= frame_duration_ms:
         raise ValueError(
@@ -86,6 +85,7 @@ def _frame_generator(frame_duration_ms, audio, overlap_ms=0):
         timestamp = round(timestamp + step_duration_s, 3)
         frame_position = frame_position + num_frames + 1
 
+
 def _frames_second_pass(frame_duration_ms, audio, start_time, end_time, overlap_ms=0):
     """
     Construct a generator which yields successive frames of an audio track.
@@ -97,12 +97,15 @@ def _frames_second_pass(frame_duration_ms, audio, start_time, end_time, overlap_
 
     # NOTE: PCM audio is made up of a collection of what it calls frames, each of which contains one sample per
     # channel (where the size of a sample is `sample_width`). To avoid confusion, we call these `PCM frames`.
-    
-    # TODO check frame sizes 
+
+    # TODO check frame sizes
 
     if overlap_ms < 0 or overlap_ms >= frame_duration_ms:
-        raise ValueError("Must have `0 <= overlap_ms < frame_duration_ms`, but have `0 <= {} < {}`."
-                         .format(overlap_ms, frame_duration_ms))
+        raise ValueError(
+            "Must have `0 <= overlap_ms < frame_duration_ms`, but have `0 <= {} < {}`.".format(
+                overlap_ms, frame_duration_ms
+            )
+        )
 
     wave_reader = audio.get_wave_reader()
     total_frames = wave_reader.getnframes()
@@ -110,16 +113,18 @@ def _frames_second_pass(frame_duration_ms, audio, start_time, end_time, overlap_
     step_duration_s = (frame_duration_ms - overlap_ms) / 1000.0
 
     timestamp = 0.0  # location in the PCM data, stepping in seconds
-    num_frames = int(audio.frame_rate*frame_duration_ms/1000)
+    num_frames = int(audio.frame_rate * frame_duration_ms / 1000)
     fp = audio.get_file_path()
     frame_position = 0
 
     frames_list = []
     while timestamp < end_time:
-        # try with list instead 
+        # try with list instead
         if timestamp >= start_time:
-            # try with list instead 
-            frames_list.append(_Frame(timestamp, frame_duration_s, wave_reader, num_frames))
+            # try with list instead
+            frames_list.append(
+                _Frame(timestamp, frame_duration_s, wave_reader, num_frames)
+            )
 
         timestamp = round(timestamp + step_duration_s, 3)
         frame_position = frame_position + num_frames + 1
@@ -287,8 +292,18 @@ class Segmenter(object):
             help minimise noises not in the frequency of human speech. Can be omitted.
     """
 
-    def __init__(self, frame_duration_ms, threshold_silence_ms, threshold_voice_ms, buffer_length_ms, aggression=1,
-                 squash_rate=None, caption_threshold=None, min_caption_len_ms=None, segment_limit=30):
+    def __init__(
+        self,
+        frame_duration_ms,
+        threshold_silence_ms,
+        threshold_voice_ms,
+        buffer_length_ms,
+        aggression=1,
+        squash_rate=None,
+        caption_threshold=None,
+        min_caption_len_ms=None,
+        segment_limit=30,
+    ):
 
         self.frame_duration_ms = frame_duration_ms
         self.threshold_silence_ms = threshold_silence_ms
@@ -415,18 +430,21 @@ class Segmenter(object):
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
             # compatible. See: https://github.com/wiseman/py-webrtcvad/blob/master/webrtcvad.py
             is_speech = vad.is_speech(frame.bytes, sample_rate)
-        
+
             # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
             # frames currently in the buffer are part of this new segment.
             if not collecting_voiced_frames:
-                buffer.append((frame, is_speech))    
+                buffer.append((frame, is_speech))
                 silence_frames.append(frame)
-            
+
                 num_voiced = len([f for f, spoken in buffer if spoken])
                 if num_voiced > 0:
                     silence_frames = []
 
-                if len(silence_frames)*frame.duration == self.segment_limit and num_voiced == 0:
+                if (
+                    len(silence_frames) * frame.duration == self.segment_limit
+                    and num_voiced == 0
+                ):
                     yield silence_frames[0].timestamp, silence_frames[-1].timestamp
                     silence_frames = []
                     buffer.clear()
@@ -442,12 +460,12 @@ class Segmenter(object):
                 voiced_frames.append(frame)
                 buffer.append((frame, is_speech))
                 num_unvoiced = len([f for f, spoken in buffer if not spoken])
-                if num_unvoiced > threshold_silence:                   
+                if num_unvoiced > threshold_silence:
                     collecting_voiced_frames = False
                     yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
                     buffer.clear()
                     voiced_frames = []
-            
+
         # If we have any leftover voiced audio when we run out of input, yield it.
         if voiced_frames:
             yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
@@ -484,14 +502,14 @@ class Segmenter(object):
 
         # Holds the frames being gathered into a segment.
         voiced_frames = []
-        #print(start_time, end_time)
+        # print(start_time, end_time)
         nuv = 0
         nv = 0
-        for i, frame in enumerate(frames):  
+        for i, frame in enumerate(frames):
 
             if frame.timestamp >= end_time:
                 break
- 
+
             if frame.timestamp >= start_time:
                 # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
                 # compatible. See: https://github.com/wiseman/py-webrtcvad/blob/master/webrtcvad.py
@@ -499,9 +517,9 @@ class Segmenter(object):
 
                 # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
                 # frames currently in the buffer are part of this new segment.
-                if not collecting_voiced_frames:    
+                if not collecting_voiced_frames:
                     buffer.append((frame, is_speech))
-                    num_voiced = len([f for f, spoken in buffer if spoken])      
+                    num_voiced = len([f for f, spoken in buffer if spoken])
                     if num_voiced > threshold_voice:
                         collecting_voiced_frames = True
                         for f, _ in buffer:
@@ -517,7 +535,7 @@ class Segmenter(object):
                         collecting_voiced_frames = False
                         yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
                         buffer.clear()
-                        voiced_frames = [] 
+                        voiced_frames = []
         # If we have any leftover voiced audio when we run out of input, yield it.
         if voiced_frames:
             yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
@@ -543,47 +561,51 @@ class Segmenter(object):
         # around so at the end we can extract the segments from it and retain their quality.
         og_audio = open_audio(audio_fpath)
         audio = self._preprocess_audio(og_audio)
-        
+
         # Set up the VAD, frame generator, and segment generator. Wrap with captioning, if that option has been set.
         frames = _frame_generator(self.frame_duration_ms, audio)
         vad = webrtcvad.Vad(self.aggression)
         segments = self._vad_pass(audio.frame_rate, vad, frames)
-        
+
         if self.caption_threshold is not None:
-            segments = self._caption_generator(segments, audio.duration_milliseconds)     
+            segments = self._caption_generator(segments, audio.duration_milliseconds)
             if self.min_caption_len_ms is not None:
                 segments = self._caption_merger(segments)
 
-    
         for segment in segments:
             # This decides whether it requires another pass to split a segment too large
-            
+
             seg_time_diff = segment[1] - segment[0]
             if seg_time_diff > self.segment_limit:
-            
+
                 sub_og_audio = open_audio(audio_fpath)
                 sub_audio = self._preprocess_audio(sub_og_audio)
 
                 # create a second pass of frames as a list to iterate over
-                sec_pass_frames = _frames_second_pass(10, sub_audio,segment[0], segment[1])
+                sec_pass_frames = _frames_second_pass(
+                    10, sub_audio, segment[0], segment[1]
+                )
                 sub_vad = webrtcvad.Vad(3)
-                sub_segments = self._vad_pass(sub_audio.frame_rate, sub_vad, sec_pass_frames)
-                
+                sub_segments = self._vad_pass(
+                    sub_audio.frame_rate, sub_vad, sec_pass_frames
+                )
+
                 if self.caption_threshold is not None:
-                    sub_segments = self._caption_generator(sub_segments, segment[1]*1000, segment[0])     
+                    sub_segments = self._caption_generator(
+                        sub_segments, segment[1] * 1000, segment[0]
+                    )
                     if self.min_caption_len_ms is not None:
                         sub_segments = self._caption_merger(sub_segments)
-                
+
                 for sub in sub_segments:
-                        yield sub, None
+                    yield sub, None
             else:
                 if not output_audio:
                     yield segment, None
                 else:
-                    # If True change up 
-                    yield segment, None #og_audio[segment[0] * 1000: segment[1] * 1000]
+                    # If True change up
+                    yield segment, None  # og_audio[segment[0] * 1000: segment[1] * 1000]
 
-        
     def segment_audio(self, audio_fpath, output_dir, output_audio=True, verbose=True):
         """
         Segments the audio at the given filepath.
@@ -672,7 +694,7 @@ class Segmenter(object):
         yield caption
 
     def _caption_merger(self, caption_gen):
-        
+
         if self.min_caption_len_ms is None:
             raise ValueError(
                 "Trying to call _caption_merger, but Segmenter doesn't have `min_caption_len_ms` set."
@@ -680,7 +702,7 @@ class Segmenter(object):
 
         min_len = self.min_caption_len_ms / 1000  # convert to seconds
         caption = next(caption_gen)
- 
+
         for caption2 in caption_gen:
             if caption[1] - caption[0] >= min_len:
                 yield caption
@@ -731,5 +753,3 @@ class Segmenter(object):
     def disable_captioning(self):
         """Disables captioning on this segmenter. Captioning can be turned on with `enable_captioning`."""
         self.caption_threshold = None
-
-
