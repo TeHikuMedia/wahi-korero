@@ -583,11 +583,15 @@ class Segmenter(object):
 
                 # left not voiced, right voiced, all goes to previous
                 elif not caption[2] and seg[2]:
+
+                    # don't merge both if max_len
                     if (
                         self.max_caption_len_ms
                         and seg[0] - caption[0] > self.max_caption_len_ms / 1000
                     ):
                         yield caption
+
+                        # if there's a large gap between these two, yield it
                         if seg[0] - caption[1] > threshold:
                             caption = caption[1], seg[0], caption[2]
                             yield caption
