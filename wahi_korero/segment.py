@@ -601,13 +601,21 @@ class Segmenter(object):
                     else:
                         caption = caption[0], seg[0], seg[2]
                         yield caption
-                        caption = seg[0], seg[1], seg[2]
+                        caption = seg
 
                 # left voiced, right not voiced
                 elif caption[2] and not seg[2]:
                     caption = caption[0], caption[1], caption[2]
                     yield caption
-                    caption = caption[1], seg[0], seg[2]
+
+                    # if there's a large gap between these two, yield it
+                    if seg[0] - caption[1] > threshold:
+                        caption = caption[1], seg[0], caption[2]
+                        yield caption
+                        caption = seg
+                    # handle gap with seg
+                    else:
+                        caption = caption[1], seg[1], seg[2]
 
                 # Both not voiced, merge
                 else:
