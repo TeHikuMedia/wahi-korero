@@ -19,7 +19,6 @@ DEFAULT_CONFIG = {
     "buffer_length_ms": 300,
     "aggression": 3,
     "squash_rate": 4000,
-    "max_caption_len_seconds": 30,
 }
 
 
@@ -250,7 +249,6 @@ class Segmenter(object):
         squash_rate=None,
         caption_threshold=None,
         min_caption_len_ms=None,
-        max_caption_len_seconds=30,
     ):
 
         self.frame_duration_ms = frame_duration_ms
@@ -261,7 +259,6 @@ class Segmenter(object):
         self.squash_rate = squash_rate
         self.caption_threshold = caption_threshold
         self.min_caption_len_ms = min_caption_len_ms
-        self.max_caption_len_seconds = max_caption_len_seconds
         self._check_parameters()
 
     def _check_parameters(self):
@@ -373,9 +370,11 @@ class Segmenter(object):
         # Holds the frames being gathered into a segment.
         voiced_frames = []
         silence_frames = []
-        silence_segment_min_duration = self.max_caption_len_seconds * 0.5
+
+        silence_segment_min_duration = 3  # seconds
         if self.min_caption_len_ms:
             silence_segment_min_duration = self.min_caption_len_ms / 1000
+
         start_logging = False
         for i, frame in enumerate(frames):
 
@@ -400,13 +399,6 @@ class Segmenter(object):
                 silence_frames.append(frame)
 
                 num_voiced = len([f for f, spoken in buffer if spoken])
-
-                if len(silence_frames) * frame.duration >= self.max_caption_len_seconds:
-                    yield silence_frames[0].timestamp, silence_frames[
-                        -1
-                    ].timestamp, False
-                    silence_frames = []
-                    buffer.clear()
 
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
@@ -439,74 +431,8 @@ class Segmenter(object):
         # If we have any leftover voiced audio when we run out of input, yield it.
         if voiced_frames:
             yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp, True
-
-    # Unused method - maybe useful to keep for future implementation
-    def _vad_second_pass(self, sample_rate, vad, frames, start_time, end_time):
-        """
-        This is the second pass of the _vad_collector. Only starts once a segment is found to be too large.
-        Iterates over a smaller list which will yield segments of voiced audio using a webrtcvad voice-activity detector.
-
-        Uses a sliding window algorithm on a ring buffer of audio frames. When enough voiced frames are in the buffer, \
-        we begin gathering frames into a segment. We end the segment when we see enough unvoiced frames in the buffer.
-
-        :param sample_rate: the sample rate of the audio being segmented.
-        :param vad: a webrtcvad voice-activity detector.
-        :param frames: a generator which yields successive frames of the audio.
-        :param start_time: the time which the segment starts.
-        :param end_time: the time which the segment ends.
-        :return: a generator that yields `Segment` objects.
-        """
-
-        # Figure out length of the buffer in frames. The start/end will be padded with a buffer length's worth of
-        # frames, to help detection of voices at the start/end.
-        buffer_len = int(self.buffer_length_ms / self.frame_duration_ms)
-        buffer = deque(maxlen=buffer_len)
-
-        # We stop/start collecting frames into a segment depending on how much of the buffer is voiced. The precise
-        # amount is specified in milliseconds by the user when creating the Segmenter. Figure out how it is in frames.
-        threshold_silence = int(self.threshold_silence_ms / self.frame_duration_ms)
-        threshold_voice = int(self.threshold_voice_ms / self.frame_duration_ms)
-
-        # Track whether or not we are currently gathering frames into a segment.
-        collecting_voiced_frames = False
-
-        # Holds the frames being gathered into a segment.
-        voiced_frames = []
-
-        for _, frame in enumerate(frames):
-
-            if frame.timestamp >= end_time:
-                break
-
-            if frame.timestamp >= start_time:
-                # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
-                # compatible. See: https://github.com/wiseman/py-webrtcvad/blob/master/webrtcvad.py
-                is_speech = vad.is_speech(frame.bytes, sample_rate)
-
-                # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
-                # frames currently in the buffer are part of this new segment.
-                if not collecting_voiced_frames:
-                    buffer.append((frame, is_speech))
-                    num_voiced = len([f for f, spoken in buffer if spoken])
-                    if num_voiced > threshold_voice:
-                        collecting_voiced_frames = True
-                        for f, _ in buffer:
-                            voiced_frames.append(f)
-                        buffer.clear()
-                # If enough of the buffer is unvoiced, we've reached the end of this segment. Yield the data we've gathered
-                # so far and reset the above variables.
-                else:
-                    voiced_frames.append(frame)
-                    buffer.append((frame, is_speech))
-                    num_unvoiced = len([f for f, spoken in buffer if not spoken])
-                    if num_unvoiced > threshold_silence:
-                        collecting_voiced_frames = False
-                        yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
-                        buffer.clear()
-                        voiced_frames = []
-        # If we have any leftover voiced audio when we run out of input, yield it.
-        if voiced_frames:
-            yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
+        else:
+            yield silence_frames[0].timestamp, silence_frames[-1].timestamp, False
 
     def segment_stream(self, audio_fpath, output_audio=False):
         """
@@ -664,10 +590,7 @@ class Segmenter(object):
 
         min_len = self.min_caption_len_ms / 1000  # convert to seconds
 
-        try:
-            caption = next(caption_gen, None)
-        except StopIteration:
-            yield caption_gen
+        caption = next(caption_gen, None)
 
         for caption2 in caption_gen:
             if caption[1] - caption[0] >= min_len:

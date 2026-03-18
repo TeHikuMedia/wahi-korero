@@ -109,12 +109,8 @@ class SegmenterIntegrationTests(unittest.TestCase):
         assert caps[2]["start"] == 1.5150000000000001
 
     def test_5_min_silence(self):
-        MAX_LEN = 100
-        segmenter = Segmenter(**self.kaituhi_config, max_caption_len_seconds=MAX_LEN)
-        segmenter.enable_captioning(
-            caption_threshold_ms=10,
-            min_caption_len_ms=10000,
-        )
+        segmenter = Segmenter(**self.kaituhi_config)
+        segmenter.enable_captioning(caption_threshold_ms=10, min_caption_len_ms=10000)
         path = os.path.join(find_base_path(), "tests", "sounds/5_mins_silence.m4a")
         stream = segmenter.segment_stream(path, output_audio=False)
         caps = []
@@ -132,10 +128,11 @@ class SegmenterIntegrationTests(unittest.TestCase):
         assert round(caps[0]["end"]) == 330
         assert round(caps[8]["end"]) == 745
 
-    # Checks whether the new segments are less than the segment limit on an edge case
+    # Checks whether the new segments are less than the some arbitrary limit
+    # probably can delete this test. removed segment limit
     def test_new_segments_less_than_limit(self):
 
-        segmenter = Segmenter(**self.kaituhi_config, max_caption_len_seconds=24)
+        segmenter = Segmenter(**self.kaituhi_config)
         segmenter.enable_captioning(
             caption_threshold_ms=10,
             min_caption_len_ms=10000,
