@@ -7,12 +7,10 @@ The name comes from wāhi, which means "to split" or "to subdivide", and kōrero
 
 ## Set Up
 
-You will need `ffmpeg` to use `wahi_korero`. When it has been installed, use `pip3 install -r requirements.txt` to get the Python dependencies.
-
-Since `koreromaori.io` runs on Python 2, this project aims to be backwards compatible with Python 2.7. If you are using Python 2.7, install the Python dependencies with `pip install -r requirements.txt`.
+You will need `ffmpeg` to use `wahi_korero`. When it has been installed, use `pip install -r requirements.txt` to get the Python dependencies.
 
 ## Command Line
-The command-line segmenter can be run like so: `python3 cmdseg sounds/hello.wav -o out`. This will segment the file at `sounds/hello.wav`, producing a `segments.json` file and an audio file for each segment and saving them to the folder called `out`. If you omit `-o out`, nothing will be saved and the JSON will be printed to `stdout`.
+The command-line segmenter can be run like so: `python cmdseg sounds/hello.wav -o out`. This will segment the file at `sounds/hello.wav`, producing a `segments.json` file and an audio file for each segment and saving them to the folder called `out`. If you omit `-o out`, nothing will be saved and the JSON will be printed to `stdout`.
 
 You can configure how the segmenter should run from the command-line. Run `python3 cmdseg -h` and see the section below, entitled "Configuring Your Own Segmenter", for more information
 
