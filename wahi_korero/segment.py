@@ -249,6 +249,7 @@ class Segmenter(object):
         squash_rate=None,
         caption_threshold=None,
         min_caption_len_ms=None,
+        max_caption_len_ms=None,
     ):
 
         self.frame_duration_ms = frame_duration_ms
@@ -259,6 +260,7 @@ class Segmenter(object):
         self.squash_rate = squash_rate
         self.caption_threshold = caption_threshold
         self.min_caption_len_ms = min_caption_len_ms
+        self.max_caption_len_ms = max_caption_len_ms
         self._check_parameters()
 
     def _check_parameters(self):
@@ -341,7 +343,7 @@ class Segmenter(object):
 
         return audio
 
-    def _vad_pass(self, sample_rate, vad, frames: _Frame):
+    def _vad_collector(self, sample_rate, vad, frames: _Frame):
         """
         Construct a generator which will yield segments of voiced audio using a webrtcvad voice-activity detector.
 
@@ -380,17 +382,7 @@ class Segmenter(object):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
             # compatible. See: https://github.com/wiseman/py-webrtcvad/blob/master/webrtcvad.py
-            try:
-                is_speech = vad.is_speech(frame.bytes, sample_rate)
-                if start_logging:
-                    print(frame.duration, frame.bytes, sample_rate)
-            except Exception:
-                # TODO: Investigate why we need this exception
-                # A strange bug showed up when modifying the
-                # _caption_generator function to handle merging of silent
-                # captions. For some reason this function errors but they seem
-                # unrelated. I wonder if it's a memory issue.
-                is_speech = False
+            is_speech = vad.is_speech(frame.bytes, sample_rate)
 
             # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
             # frames currently in the buffer are part of this new segment.
@@ -399,26 +391,43 @@ class Segmenter(object):
                 silence_frames.append(frame)
 
                 num_voiced = len([f for f, spoken in buffer if spoken])
-
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
                     if (
                         len(silence_frames) * frame.duration
                         >= silence_segment_min_duration
                     ):
-                        yield silence_frames[0].timestamp, silence_frames[
-                            -1
-                        ].timestamp, False
+                        # ideally we remove the voiced from the buffer from this
+                        yield (
+                            silence_frames[0].timestamp,
+                            silence_frames[-1].timestamp,
+                            False,
+                        )
                         silence_frames = []
                         buffer.clear()
                     else:
                         for f, _ in buffer:
                             voiced_frames.append(f)
                         buffer.clear()
+                else:
+
+                    if (
+                        self.max_caption_len_ms
+                        and len(silence_frames) * frame.duration
+                        > self.max_caption_len_ms / 1000
+                    ):
+                        yield (
+                            silence_frames[0].timestamp,
+                            silence_frames[-1].timestamp,
+                            False,
+                        )
+                        silence_frames = []
+                        buffer.clear()
 
             # If enough of the buffer is unvoiced, we've reached the end of this segment. Yield the data we've gathered
             # so far and reset the above variables.
             else:
+
                 voiced_frames.append(frame)
                 buffer.append((frame, is_speech))
                 num_unvoiced = len([f for f, spoken in buffer if not spoken])
@@ -459,11 +468,14 @@ class Segmenter(object):
         # Set up the VAD, frame generator, and segment generator. Wrap with captioning, if that option has been set.
         frames = _frame_generator(self.frame_duration_ms, audio)
         vad = webrtcvad.Vad(self.aggression)
-        segments = self._vad_pass(audio.frame_rate, vad, frames)
+        segments = self._vad_collector(audio.frame_rate, vad, frames)
 
         if self.caption_threshold is not None:
             segments = self._caption_generator(segments, audio.duration_milliseconds)
-            if self.min_caption_len_ms is not None:
+            if (
+                self.min_caption_len_ms is not None
+                or self.max_caption_len_ms is not None
+            ):
                 segments = self._caption_merger(segments)
 
         for segment in segments:
@@ -546,11 +558,19 @@ class Segmenter(object):
         # Repeatedly merge segments until we don't hit the threshold and are over the min_len.
         for seg in segment_stream:
             distance = seg[0] - caption[1]
+
             # Merge captions if within threshold distance of each other
             if distance < threshold:
-                caption = caption[0], seg[1], seg[2]
+                # check merging doesn't go over max_caption_len, mainly for long silences
+                if (
+                    self.max_caption_len_ms
+                    and seg[1] - caption[0] > self.max_caption_len_ms / 1000
+                ):
+                    yield caption
+                    caption = seg
+                else:
+                    caption = caption[0], seg[1], seg[2]
             else:
-
                 # Both captions voiced
                 if caption[2] and seg[2]:
                     half_distance = (
@@ -574,34 +594,57 @@ class Segmenter(object):
 
                 # Both not voiced, merge
                 else:
-                    print("merge silence")
-                    caption = caption[0], seg[1], seg[2]
+                    if (
+                        self.max_caption_len_ms
+                        and seg[1] - caption[0] > self.max_caption_len_ms / 1000
+                    ):
+                        # right merge
+                        caption = caption[0], caption[1], caption[2]
+                        yield caption
+                        caption = caption[1], seg[0], seg[2]
+                    else:
+                        caption = caption[0], seg[1], seg[2]
 
         # Any silence at the end goes into the last caption.
-        caption = caption[0], track_length_ms / 1000, False
+        caption = seg[0], track_length_ms / 1000, False
         yield caption
 
     def _caption_merger(self, caption_gen):
-
-        if self.min_caption_len_ms is None:
-            raise ValueError(
-                "Trying to call _caption_merger, but Segmenter doesn't have `min_caption_len_ms` set."
-            )
-
-        min_len = self.min_caption_len_ms / 1000  # convert to seconds
+        min_len = self.min_caption_len_ms / 1000 if self.min_caption_len_ms else None
+        max_len = self.max_caption_len_ms / 1000 if self.max_caption_len_ms else None
+        if not min_len and not max_len:
+            yield caption_gen
 
         caption = next(caption_gen, None)
+        while (caption2 := next(caption_gen, None)) is not None:
 
-        for caption2 in caption_gen:
-            if caption[1] - caption[0] >= min_len:
+            # min_len set
+            if min_len and caption[1] - caption[0] >= min_len:
                 yield caption
                 caption = caption2
+
             else:
-                caption = caption[0], caption2[1], caption2[2]
+                # caption not long enough
+                if min_len:
+                    caption = caption[0], caption2[1], caption2[2]
+
+                # min_len not used
+                else:
+
+                    # max_len set
+                    if max_len and caption2[1] - caption[0] >= max_len:
+                        yield caption
+                        caption = caption2
+                    else:
+                        # min not set, max is set, so what, do we merge them?
+                        # doesn't make sense does it?
+                        caption = caption[0], caption2[1], caption2[2]
 
         yield caption
 
-    def enable_captioning(self, caption_threshold_ms, min_caption_len_ms=None):
+    def enable_captioning(
+        self, caption_threshold_ms, min_caption_len_ms=None, max_caption_len_ms=None
+    ):
         """
         Enable captioning on this `Segmenter`. After segmenting a track, it will merge segments within
         `caption_threshold_ms` of each other. Any silence is distributed between the segments on either side.
@@ -609,6 +652,7 @@ class Segmenter(object):
         :param caption_threshold_ms: segments within this many milliseconds of each other are merged.
         :param min_caption_len_ms: optional argument. If set, an attempt wil be made to greedily merge captions shorter
             than this amount.
+        :param max_caption_len_ms: optional argument. If set, an attempt wil be made to ensure captions not longer than this.
         :raise ConfigError: if invalid arguments have been specified.
         :raise TypeError: if arguments of the wrong type are passed to this function.
         """
@@ -622,21 +666,40 @@ class Segmenter(object):
                 "`enable_captioning` must be called with `min_caption_len_ms` as an `int`, but it was"
                 " called with a `{}`".format(type(min_caption_len_ms))
             )
+        if type(max_caption_len_ms) not in [int, type(None)]:
+            raise TypeError(
+                f"`enable_captioning` must be called with `max_caption_len_ms` as an `int`, but it was"
+                f" called with a `{type(min_caption_len_ms)}`"
+            )
         if caption_threshold_ms < 0:
             raise ConfigError(
-                "`enable_captioning` must be called with `caption_threshold_ms` >= 0, but it is `{}`".format(
-                    caption_threshold_ms
-                )
+                "`enable_captioning` must be called with "
+                f"`caption_threshold_ms` >= 0, but it is `{caption_threshold_ms}`"
             )
         if min_caption_len_ms is not None and min_caption_len_ms < 0:
             raise ConfigError(
-                "`enable_captioning` must be called with `min_caption_len_ms` as an `int`, but it is `{}`".format(
-                    min_caption_len_ms
-                )
+                "`enable_captioning` must be called with `min_caption_len_ms`"
+                f"> 0, but it is `{min_caption_len_ms}`"
+            )
+        if max_caption_len_ms is not None and max_caption_len_ms < 0:
+            raise ConfigError(
+                "`enable_captioning` must be called with `max_caption_len_ms`"
+                f"> 0, but it is `{max_caption_len_ms}`"
+            )
+        if (
+            max_caption_len_ms is not None
+            and min_caption_len_ms is not None
+            and max_caption_len_ms <= min_caption_len_ms
+        ):
+            raise ConfigError(
+                "`enable_captioning` must be called with `min_caption_len_ms` < `max_caption_len_ms`"
             )
         self.caption_threshold = float(caption_threshold_ms)
         self.min_caption_len_ms = (
-            float(min_caption_len_ms) if min_caption_len_ms is not None else None
+            float(min_caption_len_ms) if min_caption_len_ms else None
+        )
+        self.max_caption_len_ms = (
+            float(max_caption_len_ms) if max_caption_len_ms else None
         )
 
     def disable_captioning(self):

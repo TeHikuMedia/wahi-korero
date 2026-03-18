@@ -65,7 +65,7 @@ class SubAudioSegment:
                 "wav",
                 destination,
             ]
-        print(" ".join(ffmpeg_cmd))
+
         out = subprocess.run(ffmpeg_cmd, capture_output=True)
 
         # then this just works?
@@ -149,7 +149,6 @@ class MyAudioSegment(SubAudioSegment):
         # Only accept slices for now.
         if isinstance(index, slice):
             # Return audio from start to stop!
-            print(index.start, index.stop)
             sub_segment = SubAudioSegment(self.get_file_path(), index.start, index.stop)
             return sub_segment
         return None
