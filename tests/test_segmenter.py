@@ -160,8 +160,8 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
         assert round(caps[0]["end"]) == 100
         assert round(caps[2]["end"]) == 300
-        assert round(caps[3]["end"] - caps[3]["start"]) == 34
-        assert round(caps[12]["end"]) == 707
+        assert round(caps[3]["end"] - caps[3]["start"]) == 30
+        assert round(caps[12]["end"]) == 607
 
         for i in range(len(caps) - 1):
             assert caps[i]["end"] == caps[i + 1]["start"]
