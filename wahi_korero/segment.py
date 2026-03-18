@@ -45,7 +45,7 @@ class _Frame(object):
         )
 
 
-def _frame_generator(frame_duration_ms, audio, overlap_ms=0):
+def _frame_generator(frame_duration_ms, audio, overlap_ms=0) -> _Frame:
     """
     Construct a generator which yields successive frames of an audio track.
 
@@ -208,7 +208,7 @@ def frame_audio(
                 print("Writing {}".format(output_fpath))
             audio.export(output_fpath, audio_format="wav")
             additional_kvs["fname"] = fname
-        start, end = seg
+        start, end, _ = seg
         seg_data.add(start, end, additional_kvs)
 
     seg_data.save_to_file(
@@ -390,7 +390,7 @@ class Segmenter(object):
 
         return audio
 
-    def _vad_pass(self, sample_rate, vad, frames):
+    def _vad_pass(self, sample_rate, vad, frames: _Frame):
         """
         Construct a generator which will yield segments of voiced audio using a webrtcvad voice-activity detector.
 
@@ -400,7 +400,7 @@ class Segmenter(object):
         :param sample_rate: the sample rate of the audio being segmented.
         :param vad: a webrtcvad voice-activity detector.
         :param frames: a generator which yields successive frames of the audio.
-        :return: a generator that yields `Segment` objects.
+        :return: a generator that yields `Segment` objects, and boolean if contains voiced segments
         """
 
         # Figure out length of the buffer in frames. The start/end will be padded with a buffer length's worth of
@@ -422,11 +422,23 @@ class Segmenter(object):
         silence_segment_min_duration = self.max_caption_len_seconds * 0.5
         if self.min_caption_len_ms:
             silence_segment_min_duration = self.min_caption_len_ms / 1000
+        start_logging = False
         for i, frame in enumerate(frames):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
             # compatible. See: https://github.com/wiseman/py-webrtcvad/blob/master/webrtcvad.py
-            is_speech = vad.is_speech(frame.bytes, sample_rate)
+            try:
+                is_speech = vad.is_speech(frame.bytes, sample_rate)
+                if start_logging:
+                    print(frame.duration, frame.bytes, sample_rate)
+            except Exception as e:
+                print(frame)
+                print(frame.duration, frame.bytes, sample_rate)
+                print(e)
+                print(len(frames))
+                print(i)
+                is_speech = False
+                start_logging = True
 
             # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
             # frames currently in the buffer are part of this new segment.
@@ -437,7 +449,9 @@ class Segmenter(object):
                 num_voiced = len([f for f, spoken in buffer if spoken])
 
                 if len(silence_frames) * frame.duration >= self.max_caption_len_seconds:
-                    yield silence_frames[0].timestamp, silence_frames[-1].timestamp
+                    yield silence_frames[0].timestamp, silence_frames[
+                        -1
+                    ].timestamp, False
                     silence_frames = []
                     buffer.clear()
 
@@ -447,18 +461,10 @@ class Segmenter(object):
                         len(silence_frames) * frame.duration
                         >= silence_segment_min_duration
                     ):
-                        # Take a few frames before
-                        _min = (
-                            -threshold_voice
-                            if len(silence_frames) > threshold_voice
-                            else -len(silence_frames)
-                        )
-                        for _ in range(_min, 0):
-                            f = silence_frames.pop()
-                            voiced_frames.append(f)
-                        yield silence_frames[0].timestamp, silence_frames[-1].timestamp
+                        yield silence_frames[0].timestamp, silence_frames[
+                            -1
+                        ].timestamp, False
                         silence_frames = []
-
                         buffer.clear()
                     else:
                         for f, _ in buffer:
@@ -473,13 +479,13 @@ class Segmenter(object):
                 num_unvoiced = len([f for f, spoken in buffer if not spoken])
                 if num_unvoiced > threshold_silence:
                     collecting_voiced_frames = False
-                    yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
+                    yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp, True
                     buffer.clear()
                     voiced_frames = []
 
         # If we have any leftover voiced audio when we run out of input, yield it.
         if voiced_frames:
-            yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp
+            yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp, True
 
     # Unused method - maybe useful to keep for future implementation
     def _vad_second_pass(self, sample_rate, vad, frames, start_time, end_time):
@@ -666,7 +672,7 @@ class Segmenter(object):
                     print("Writing {}".format(output_fpath))
                 audio.export(output_fpath, audio_format="wav")
                 additional_kvs["fname"] = fname
-            start, end = seg
+            start, end, _ = seg
             seg_data.add(start, end, additional_kvs)
 
         seg_data.save_to_file(
@@ -675,29 +681,53 @@ class Segmenter(object):
         )
 
     def _caption_generator(self, segment_stream, track_length_ms, caption_start=0):
-
+        """
+        Creates "captions" from a vad generator
+        """
         if self.caption_threshold is None:
             raise ValueError(
                 "Trying to call _caption_generator, but Segmenter doesn't have captioning enabled."
             )
 
         threshold = self.caption_threshold / 1000  # convert to seconds
-        caption = caption_start, next(segment_stream)[1]
+        seg = next(segment_stream)
+        caption = caption_start, seg[1], seg[2]
         # Repeatedly merge segments until we don't hit the threshold and are over the min_len.
         for seg in segment_stream:
             distance = seg[0] - caption[1]
+            # Merge captions if within threshold distance of each other
             if distance < threshold:
-                caption = caption[0], seg[1]
+                caption = caption[0], seg[1], seg[2]
             else:
-                half_distance = (
-                    float(distance) / 2
-                )  # half goes to previous segment, half to next
-                caption = caption[0], caption[1] + half_distance
-                yield caption
-                caption = seg[0] - half_distance, seg[1]
+
+                # Both captions voiced
+                if caption[2] and seg[2]:
+                    half_distance = (
+                        float(distance) / 2
+                    )  # half goes to previous segment, half to next
+                    caption = caption[0], caption[1] + half_distance, caption[2]
+                    yield caption
+                    caption = seg[0] - half_distance, seg[1], seg[2]
+
+                # left not voiced, right voiced, all goes to previous
+                elif not caption[2] and seg[2]:
+                    caption = caption[0], seg[0], seg[2]
+                    yield caption
+                    caption = seg[0], seg[1], seg[2]
+
+                # left voiced, right not voiced
+                elif caption[2] and not seg[2]:
+                    caption = caption[0], caption[1], caption[2]
+                    yield caption
+                    caption = caption[1], seg[0], seg[2]
+
+                # Both not voiced, merge
+                else:
+                    print("merge silence")
+                    caption = caption[0], seg[1], seg[2]
 
         # Any silence at the end goes into the last caption.
-        caption = caption[0], track_length_ms / 1000
+        caption = caption[0], track_length_ms / 1000, False
         yield caption
 
     def _caption_merger(self, caption_gen):
@@ -719,7 +749,7 @@ class Segmenter(object):
                 yield caption
                 caption = caption2
             else:
-                caption = caption[0], caption2[1]
+                caption = caption[0], caption2[1], caption2[2]
 
         yield caption
 

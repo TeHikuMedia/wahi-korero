@@ -26,7 +26,7 @@ import wahi_korero
 segmenter = wahi_korero.default_segmenter()
 stream = segmenter.segment_stream("myfile.wav", output_audio=True)
 for seg, audio in stream:
-    start, end = seg
+    start, end, voiced = seg
     do_stuff(start, end, audio)
 ```
 

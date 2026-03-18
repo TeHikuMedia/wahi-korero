@@ -64,7 +64,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
         stream = segmenter.segment_stream(self.silence_path, output_audio=False)
         for seg, audio in stream:
-            start, end = seg
+            start, end, voiced = seg
 
         assert ["success"]
 
@@ -79,7 +79,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
         stream = segmenter.segment_stream(self.hello_wav_path, output_audio=False)
         for seg, audio in stream:
-            start, end = seg
+            start, end, voiced = seg
             print(start, end)
 
         assert True
@@ -95,7 +95,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = segmenter.segment_stream(self.hello_wav_path, output_audio=False)
         caps = []
         for seg, _ in stream:  # We don't return audio in this iterator
-            start, end = seg
+            start, end, voiced = seg
             caps.append(
                 {
                     "start": start,
@@ -119,7 +119,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = segmenter.segment_stream(path, output_audio=False)
         caps = []
         for seg, _ in stream:  # We don't return audio in this iterator
-            start, end = seg
+            start, end, voiced = seg
             caps.append(
                 {
                     "start": start,
@@ -129,26 +129,25 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(round(start), round(end), round(end - start))
 
         assert caps[0]["end"] == caps[1]["start"]
-        assert round(caps[0]["end"]) == MAX_LEN
-        print(caps[0])
-        print(caps[1])
-        print(caps[2])
-        assert round(caps[1]["end"]) == MAX_LEN * 2
+        assert round(caps[0]["end"]) == 330
+        assert round(caps[8]["end"]) == 741
 
     # Checks whether the new segments are less than the segment limit on an edge case
     def test_new_segments_less_than_limit(self):
 
-        segmenter = Segmenter(**self.kaituhi_config)
+        segmenter = Segmenter(**self.kaituhi_config, max_caption_len_seconds=24)
         segmenter.enable_captioning(
             caption_threshold_ms=10,
             min_caption_len_ms=10000,
         )
 
         stream = segmenter.segment_stream(self.seg_too_large_path, output_audio=False)
+        caps = []
+        for seg, _ in stream:  # We don't return audio in this iterator
+            start, end, _ = seg
+            caps.append([end, start])
 
-        captions = []
-
-        assert all((cap[1] - cap[0]) <= 30 for cap in captions)
+        assert all((cap[1] - cap[0]) <= 24 for cap in caps)
 
     # Fails if a non audio file in inputted into the stream
     def test_non_audio(self):
