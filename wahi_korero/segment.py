@@ -249,6 +249,7 @@ class Segmenter(object):
         squash_rate=None,
         caption_threshold=None,
         min_caption_len_ms=None,
+        max_caption_len_ms=None,
     ):
 
         self.frame_duration_ms = frame_duration_ms
@@ -259,6 +260,7 @@ class Segmenter(object):
         self.squash_rate = squash_rate
         self.caption_threshold = caption_threshold
         self.min_caption_len_ms = min_caption_len_ms
+        self.max_caption_len_ms = max_caption_len_ms
         self._check_parameters()
 
     def _check_parameters(self):
@@ -463,7 +465,10 @@ class Segmenter(object):
 
         if self.caption_threshold is not None:
             segments = self._caption_generator(segments, audio.duration_milliseconds)
-            if self.min_caption_len_ms is not None:
+            if (
+                self.min_caption_len_ms is not None
+                or self.max_caption_len_ms is not None
+            ):
                 segments = self._caption_merger(segments)
 
         for segment in segments:
@@ -550,14 +555,13 @@ class Segmenter(object):
             if distance < threshold:
                 caption = caption[0], seg[1], seg[2]
             else:
-
                 # Both captions voiced
                 if caption[2] and seg[2]:
                     half_distance = (
                         float(distance) / 2
                     )  # half goes to previous segment, half to next
-                    caption = caption[0], caption[1] + half_distance, caption[2]
-                    yield caption
+                    new_caption = caption[0], caption[1] + half_distance, caption[2]
+                    yield new_caption
                     caption = seg[0] - half_distance, seg[1], seg[2]
 
                 # left not voiced, right voiced, all goes to previous
@@ -582,26 +586,48 @@ class Segmenter(object):
         yield caption
 
     def _caption_merger(self, caption_gen):
-
-        if self.min_caption_len_ms is None:
-            raise ValueError(
-                "Trying to call _caption_merger, but Segmenter doesn't have `min_caption_len_ms` set."
-            )
-
-        min_len = self.min_caption_len_ms / 1000  # convert to seconds
+        min_len = self.min_caption_len_ms / 1000 if self.min_caption_len_ms else None
+        max_len = self.max_caption_len_ms / 1000 if self.max_caption_len_ms else None
+        if not min_len and not max_len:
+            yield caption_gen
 
         caption = next(caption_gen, None)
+        while (caption2 := next(caption_gen, None)) is not None:
 
-        for caption2 in caption_gen:
-            if caption[1] - caption[0] >= min_len:
+            # min_len set
+            if min_len and caption[1] - caption[0] >= min_len:
+
+                # max_len set
+                if max_len:
+                    while caption2[1] - caption[0] < max_len:
+                        caption2 = next(caption_gen, None)
+                        caption = caption[0], caption2[1], caption2[2]
+
                 yield caption
                 caption = caption2
+
             else:
-                caption = caption[0], caption2[1], caption2[2]
+                # caption not long enough
+                if min_len:
+                    caption = caption[0], caption2[1], caption2[2]
+
+                # min_len not used
+                else:
+
+                    # max_len set
+                    if max_len and caption2[1] - caption[0] >= max_len:
+                        yield caption
+                        caption = caption2
+                    else:
+                        # min not set, max is set, so what, do we merge them?
+                        # doesn't make sense does it?
+                        caption = caption[0], caption2[1], caption2[2]
 
         yield caption
 
-    def enable_captioning(self, caption_threshold_ms, min_caption_len_ms=None):
+    def enable_captioning(
+        self, caption_threshold_ms, min_caption_len_ms=None, max_caption_len_ms=None
+    ):
         """
         Enable captioning on this `Segmenter`. After segmenting a track, it will merge segments within
         `caption_threshold_ms` of each other. Any silence is distributed between the segments on either side.
@@ -609,6 +635,7 @@ class Segmenter(object):
         :param caption_threshold_ms: segments within this many milliseconds of each other are merged.
         :param min_caption_len_ms: optional argument. If set, an attempt wil be made to greedily merge captions shorter
             than this amount.
+        :param max_caption_len_ms: optional argument. If set, an attempt wil be made to ensure captions not longer than this.
         :raise ConfigError: if invalid arguments have been specified.
         :raise TypeError: if arguments of the wrong type are passed to this function.
         """
@@ -622,21 +649,40 @@ class Segmenter(object):
                 "`enable_captioning` must be called with `min_caption_len_ms` as an `int`, but it was"
                 " called with a `{}`".format(type(min_caption_len_ms))
             )
+        if type(max_caption_len_ms) not in [int, type(None)]:
+            raise TypeError(
+                f"`enable_captioning` must be called with `max_caption_len_ms` as an `int`, but it was"
+                f" called with a `{type(min_caption_len_ms)}`"
+            )
         if caption_threshold_ms < 0:
             raise ConfigError(
-                "`enable_captioning` must be called with `caption_threshold_ms` >= 0, but it is `{}`".format(
-                    caption_threshold_ms
-                )
+                "`enable_captioning` must be called with "
+                f"`caption_threshold_ms` >= 0, but it is `{caption_threshold_ms}`"
             )
         if min_caption_len_ms is not None and min_caption_len_ms < 0:
             raise ConfigError(
-                "`enable_captioning` must be called with `min_caption_len_ms` as an `int`, but it is `{}`".format(
-                    min_caption_len_ms
-                )
+                "`enable_captioning` must be called with `min_caption_len_ms`"
+                f"> 0, but it is `{min_caption_len_ms}`"
+            )
+        if max_caption_len_ms is not None and max_caption_len_ms < 0:
+            raise ConfigError(
+                "`enable_captioning` must be called with `max_caption_len_ms`"
+                f"> 0, but it is `{max_caption_len_ms}`"
+            )
+        if (
+            max_caption_len_ms is not None
+            and min_caption_len_ms is not None
+            and max_caption_len_ms <= min_caption_len_ms
+        ):
+            raise ConfigError(
+                "`enable_captioning` must be called with `min_caption_len_ms` < `max_caption_len_ms`"
             )
         self.caption_threshold = float(caption_threshold_ms)
         self.min_caption_len_ms = (
-            float(min_caption_len_ms) if min_caption_len_ms is not None else None
+            float(min_caption_len_ms) if min_caption_len_ms else None
+        )
+        self.max_caption_len_ms = (
+            float(max_caption_len_ms) if max_caption_len_ms else None
         )
 
     def disable_captioning(self):
