@@ -240,7 +240,6 @@ class MyAudioSegment(SubAudioSegment):
                     str(rate),
                     tmp_file,
                 ]
-
                 # Redirect stdout and stderr to DEVNULL to silence output.
                 # Do explicitly for Python 2 compatibility.
                 with open(os.devnull, "w") as DEVNULL:
