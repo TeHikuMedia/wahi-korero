@@ -82,52 +82,6 @@ def _frame_generator(frame_duration_ms, audio, overlap_ms=0) -> _Frame:
         frame_position = frame_position + num_frames + 1
 
 
-def _frames_second_pass(frame_duration_ms, audio, start_time, end_time, overlap_ms=0):
-    """
-    Construct a generator which yields successive frames of an audio track.
-
-    :param audio: an `AudioSegment`.
-    :param overlap_ms: if set, frames will overlap.
-    :return: a generator which yields `Frame` objects.
-    """
-
-    # NOTE: PCM audio is made up of a collection of what it calls frames, each of which contains one sample per
-    # channel (where the size of a sample is `sample_width`). To avoid confusion, we call these `PCM frames`.
-
-    # TODO check frame sizes
-
-    if overlap_ms < 0 or overlap_ms >= frame_duration_ms:
-        raise ValueError(
-            "Must have `0 <= overlap_ms < frame_duration_ms`, but have `0 <= {} < {}`.".format(
-                overlap_ms, frame_duration_ms
-            )
-        )
-
-    wave_reader = audio.get_wave_reader()
-    total_frames = wave_reader.getnframes()
-    frame_duration_s = frame_duration_ms / 1000.0
-    step_duration_s = (frame_duration_ms - overlap_ms) / 1000.0
-
-    timestamp = 0.0  # location in the PCM data, stepping in seconds
-    num_frames = int(audio.frame_rate * frame_duration_ms / 1000)
-    fp = audio.get_file_path()
-    frame_position = 0
-
-    frames_list = []
-    while timestamp < end_time:
-        # try with list instead
-        if timestamp >= start_time:
-            # try with list instead
-            frames_list.append(
-                _Frame(timestamp, frame_duration_s, wave_reader, num_frames)
-            )
-
-        timestamp = round(timestamp + step_duration_s, 3)
-        frame_position = frame_position + num_frames + 1
-
-    return frames_list
-
-
 def frame_stream(frame_duration_ms, audio_fpath, output_audio=False, overlap_ms=0):
     """
     Produces a generator which yields successive segments of a specified frame size.
@@ -587,38 +541,10 @@ class Segmenter(object):
                 segments = self._caption_merger(segments)
 
         for segment in segments:
-            # This decides whether it requires another pass to split a segment too large
-
-            seg_time_diff = segment[1] - segment[0]
-            if seg_time_diff > self.max_caption_len_seconds:
-
-                sub_og_audio = open_audio(audio_fpath)
-                sub_audio = self._preprocess_audio(sub_og_audio)
-
-                # create a second pass of frames as a list to iterate over
-                sec_pass_frames = _frames_second_pass(
-                    10, sub_audio, segment[0], segment[1]
-                )
-                sub_vad = webrtcvad.Vad(3)
-                sub_segments = self._vad_pass(
-                    sub_audio.frame_rate, sub_vad, sec_pass_frames
-                )
-
-                if self.caption_threshold is not None:
-                    sub_segments = self._caption_generator(
-                        sub_segments, segment[1] * 1000, segment[0]
-                    )
-                    if self.min_caption_len_ms is not None:
-                        sub_segments = self._caption_merger(sub_segments)
-
-                for sub in sub_segments:
-                    yield sub, None
+            if not output_audio:
+                yield segment, None
             else:
-                if not output_audio:
-                    yield segment, None
-                else:
-                    # If True change up
-                    yield segment, og_audio[segment[0] * 1000 : segment[1] * 1000]
+                yield segment, og_audio[segment[0] * 1000 : segment[1] * 1000]
 
     def segment_audio(self, audio_fpath, output_dir, output_audio=True, verbose=True):
         """

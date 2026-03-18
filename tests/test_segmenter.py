@@ -130,7 +130,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
         assert caps[0]["end"] == caps[1]["start"]
         assert round(caps[0]["end"]) == 330
-        assert round(caps[8]["end"]) == 741
+        assert round(caps[8]["end"]) == 745
 
     # Checks whether the new segments are less than the segment limit on an edge case
     def test_new_segments_less_than_limit(self):
