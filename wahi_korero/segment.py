@@ -400,17 +400,31 @@ class Segmenter(object):
                 buffer.append((frame, is_speech))
                 silence_frames.append(frame)
 
-                num_voiced = len([f for f, spoken in buffer if spoken])
+                if (
+                    self.max_caption_len_ms
+                    and len(silence_frames) * frame.duration
+                    > self.max_caption_len_ms / 1000
+                ):
+                    yield (
+                        silence_frames[0].timestamp,
+                        silence_frames[-1].timestamp,
+                        False,
+                    )
+                    silence_frames = []
+                    buffer.clear()
 
+                num_voiced = len([f for f, spoken in buffer if spoken])
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
                     if (
                         len(silence_frames) * frame.duration
                         >= silence_segment_min_duration
                     ):
-                        yield silence_frames[0].timestamp, silence_frames[
-                            -1
-                        ].timestamp, False
+                        yield (
+                            silence_frames[0].timestamp,
+                            silence_frames[-1].timestamp,
+                            False,
+                        )
                         silence_frames = []
                         buffer.clear()
                     else:
@@ -578,8 +592,17 @@ class Segmenter(object):
 
                 # Both not voiced, merge
                 else:
-                    print("merge silence")
-                    caption = caption[0], seg[1], seg[2]
+                    if (
+                        self.max_caption_len_ms
+                        and seg[1] - caption[0] > self.max_caption_len_ms / 1000
+                    ):
+                        # right merge
+                        caption = caption[0], caption[1], caption[2]
+                        yield caption
+                        caption = caption[1], seg[0], seg[2]
+
+                    else:
+                        caption = caption[0], seg[1], seg[2]
 
         # Any silence at the end goes into the last caption.
         caption = caption[0], track_length_ms / 1000, False
@@ -596,12 +619,6 @@ class Segmenter(object):
 
             # min_len set
             if min_len and caption[1] - caption[0] >= min_len:
-
-                # max_len set
-                if max_len:
-                    while caption2[1] - caption[0] < max_len:
-                        caption2 = next(caption_gen, None)
-                        caption = caption[0], caption2[1], caption2[2]
 
                 yield caption
                 caption = caption2

@@ -131,7 +131,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         segmenter.enable_captioning(
             caption_threshold_ms=10,
             min_caption_len_ms=10000,
-            max_caption_len_ms=12000,
+            max_caption_len_ms=100 * 1000,
         )
 
         stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
@@ -147,8 +147,9 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(round(start), round(end), round(end - start))
 
         assert caps[0]["end"] == caps[1]["start"]
-        assert round(caps[0]["end"]) == 330
-        assert round(caps[8]["end"]) == 745
+        assert round(caps[0]["end"]) == 100
+        assert round(caps[2]["end"]) == 330
+        assert round(caps[12]["end"]) == 745
 
     def test_max_caption(self):
         segmenter = Segmenter(**self.kaituhi_config)
@@ -169,8 +170,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(round(start), round(end), round(end - start))
 
         assert caps[0]["end"] == caps[1]["start"]
-        assert round(caps[0]["end"]) == 330
-        assert round(caps[8]["end"]) == 745
+        assert round(caps[0]["end"]) == 14
 
     def test_min_caption(self):
         segmenter = Segmenter(**self.kaituhi_config)
