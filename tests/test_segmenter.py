@@ -66,7 +66,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         for seg, audio in stream:
             start, end, voiced = seg
 
-        assert ["success"]
+        assert round(end) == 600  # one long silent caption
 
     # Basic test whether the stream runs smoothly on a small file
     def test_the_way_kaituhi_uses_it(self):

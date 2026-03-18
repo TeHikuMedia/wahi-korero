@@ -431,14 +431,13 @@ class Segmenter(object):
                 is_speech = vad.is_speech(frame.bytes, sample_rate)
                 if start_logging:
                     print(frame.duration, frame.bytes, sample_rate)
-            except Exception as e:
-                print(frame)
-                print(frame.duration, frame.bytes, sample_rate)
-                print(e)
-                print(len(frames))
-                print(i)
+            except Exception:
+                # TODO: Investigate why we need this exception
+                # A strange bug showed up when modifying the
+                # _caption_generator function to handle merging of silent
+                # captions. For some reason this function errors but they seem
+                # unrelated. I wonder if it's a memory issue.
                 is_speech = False
-                start_logging = True
 
             # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
             # frames currently in the buffer are part of this new segment.
