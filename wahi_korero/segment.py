@@ -447,10 +447,14 @@ class Segmenter(object):
                         len(silence_frames) * frame.duration
                         >= silence_segment_min_duration
                     ):
-                        f = silence_frames.pop()
+                        # Take a few frames before
+                        _min = -3 if len(silence_frames) > 3 else -len(silence_frames)
+                        for _ in range(_min, 0):
+                            f = silence_frames.pop()
+                            voiced_frames.append(f)
                         yield silence_frames[0].timestamp, silence_frames[-1].timestamp
                         silence_frames = []
-                        voiced_frames.append(f)
+
                         buffer.clear()
                     else:
                         for f, _ in buffer:
