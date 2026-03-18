@@ -147,6 +147,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
         caps = []
         for seg, _ in stream:  # We don't return audio in this iterator
+
             start, end, voiced = seg
             caps.append(
                 {
@@ -157,12 +158,13 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(f"{round(start):>3.0f}", f"{round(end):>3.0f}", round(end - start))
             assert round(end - start) <= 100
 
-        assert caps[0]["end"] == caps[1]["start"]
         assert round(caps[0]["end"]) == 100
         assert round(caps[2]["end"]) == 300
-        assert round(caps[3]["end"] - caps[3]["start"]) == 10
+        assert round(caps[3]["end"] - caps[3]["start"]) == 34
         assert round(caps[12]["end"]) == 707
-        assert caps[13]["end"] == caps[14]["start"]
+
+        for i in range(len(caps) - 1):
+            assert caps[i]["end"] == caps[i + 1]["start"]
 
     def test_max_caption(self):
         segmenter = Segmenter(**self.kaituhi_config)

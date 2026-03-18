@@ -588,7 +588,7 @@ class Segmenter(object):
                         and seg[0] - caption[0] > self.max_caption_len_ms / 1000
                     ):
                         yield caption
-                        caption = seg
+                        caption = caption[1], seg[0], seg[2]
                     else:
                         caption = caption[0], seg[0], seg[2]
                         yield caption
