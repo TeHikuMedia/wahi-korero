@@ -1,5 +1,6 @@
 # Make `wahi_korero` visible on sys.path
 import sys
+
 sys.path.append("..")
 
 import json
@@ -119,11 +120,15 @@ class SegmenterIntegrationTests(unittest.TestCase):
     def test_non_audio(self):
         try:
             self.segmenter.segment_audio("test_segmenter.py", "out")
-            self.fail("Segmenter should have failed gracefully on unsupported file format.")
+            self.fail(
+                "Segmenter should have failed gracefully on unsupported file format."
+            )
         except FormatError:
             pass  # desired behaviour
         except:
-            self.fail("Segmenter should have failed gracefully on unsupported file format.")
+            self.fail(
+                "Segmenter should have failed gracefully on unsupported file format."
+            )
 
    
 if __name__ == "__main__":
