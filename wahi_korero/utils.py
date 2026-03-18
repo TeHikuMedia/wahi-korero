@@ -1,9 +1,10 @@
-from .exceptions import FormatError
 import os
-from os import path
-from .audiosegment import MyAudioSegment as AudioSegment
 import subprocess
 import tempfile
+from os import path
+
+from .audiosegment import MyAudioSegment as AudioSegment
+from .exceptions import FormatError
 
 # The segmenter is capable of loading these formats. We could probably support more, it depends on ffmpeg.
 SUPPORTED_FORMATS = [
@@ -32,7 +33,7 @@ def _quadraphonic_to_mono(audio):
     fd_out, fpath_out = tempfile.mkstemp()
 
     try:
-        audio.export(fpath_in, format="wav")
+        audio.export(fpath_in, audio_format="wav")
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",  # overwrite output files without asking
