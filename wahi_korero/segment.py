@@ -1,8 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
-if hasattr(__builtins__, "raw_input"):
-    input = raw_input
-
 """
 Adapted from https://github.com/wiseman/py-webrtcvad/blob/master/example.py
 """
