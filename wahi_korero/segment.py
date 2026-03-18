@@ -576,8 +576,8 @@ class Segmenter(object):
                     half_distance = (
                         float(distance) / 2
                     )  # half goes to previous segment, half to next
-                    new_caption = caption[0], caption[1] + half_distance, caption[2]
-                    yield new_caption
+                    caption = caption[0], caption[1] + half_distance, caption[2]
+                    yield caption
                     caption = seg[0] - half_distance, seg[1], seg[2]
 
                 # left not voiced, right voiced, all goes to previous
@@ -594,7 +594,6 @@ class Segmenter(object):
 
                 # Both not voiced, merge
                 else:
-
                     if (
                         self.max_caption_len_ms
                         and seg[1] - caption[0] > self.max_caption_len_ms / 1000
@@ -603,7 +602,6 @@ class Segmenter(object):
                         caption = caption[0], caption[1], caption[2]
                         yield caption
                         caption = caption[1], seg[0], seg[2]
-
                     else:
                         caption = caption[0], seg[1], seg[2]
 
