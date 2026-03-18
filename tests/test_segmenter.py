@@ -1,5 +1,6 @@
 import json
 import sys
+from math import floor
 
 sys.path.append("..")
 import os
@@ -90,19 +91,26 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
     # Basic test whether the stream runs smoothly on a small file
     def test_the_way_kaituhi_uses_it(self):
-
-        segmenter = Segmenter(**self.kaituhi_config)
+        config = {**self.kaituhi_config, "squash_rate": 8000}
+        segmenter = Segmenter(**config)
         segmenter.enable_captioning(
             caption_threshold_ms=10,
-            min_caption_len_ms=10000,
+            min_caption_len_ms=10 * 1000,
+            max_caption_len_ms=100 * 1000,
         )
 
-        stream = segmenter.segment_stream(self.silence_path, output_audio=False)
+        stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
         for seg, audio in stream:
             start, end, voiced = seg
-            print(start, end)
-
-        assert True
+            dt = end - start
+            mins = floor(dt / 60)
+            secs = round(dt - mins * 60)
+            print(
+                f"{round(start):> 3.0f}",
+                f"{round(end):> 3.0f}",
+                f"{ mins:02.0f}:{secs:02.0f}",
+            )
+            assert round(dt) <= 100
 
     def test_the_min_cap_length(self):
 
@@ -146,12 +154,15 @@ class SegmenterIntegrationTests(unittest.TestCase):
                     "end": end,
                 }
             )
-            print(round(start), round(end), round(end - start))
+            print(f"{round(start):>3.0f}", f"{round(end):>3.0f}", round(end - start))
+            assert round(end - start) <= 100
 
         assert caps[0]["end"] == caps[1]["start"]
         assert round(caps[0]["end"]) == 100
-        assert round(caps[2]["end"]) == 330
-        assert round(caps[12]["end"]) == 745
+        assert round(caps[2]["end"]) == 300
+        assert round(caps[3]["end"] - caps[3]["start"]) == 10
+        assert round(caps[12]["end"]) == 707
+        assert caps[13]["end"] == caps[14]["start"]
 
     def test_max_caption(self):
         segmenter = Segmenter(**self.kaituhi_config)
