@@ -9,10 +9,6 @@ The name comes from wāhi, which means "to split" or "to subdivide", and kōrero
 
 You will need `ffmpeg` to use `wahi_korero`. When it has been installed, use `pip install -r requirements.txt` to get the Python dependencies.
 
-## Command Line
-The command-line segmenter can be run like so: `python cmdseg sounds/hello.wav -o out`. This will segment the file at `sounds/hello.wav`, producing a `segments.json` file and an audio file for each segment and saving them to the folder called `out`. If you omit `-o out`, nothing will be saved and the JSON will be printed to `stdout`.
-
-You can configure how the segmenter should run from the command-line. Run `python3 cmdseg -h` and see the section below, entitled "Configuring Your Own Segmenter", for more information
 
 ## Python API
 The code below will segment `myfile.wav`, saving the output to the `out` folder. If you specify the optional `output_audio` flag, each segment will be saved to its own `.wav` file. There will also be a `segments.json` containing information about the segments.
@@ -99,9 +95,11 @@ segmenter.segment_audio("myfile.wav", output_dir="where/to/save/files")
 
 Documentation is generated with `Sphinx` and can be found in the `docs/build/html` folder. It can be viewed by opening `docs/build/html/index.html` in a web browser. See `docs/README.md` for information on how to rebuild the documentation.
 
-## Test
+## Tests
 
-There are a few integration tests in `test`. See `tests/README.md` for information.
+```
+pytest tests
+```
 
 
 
