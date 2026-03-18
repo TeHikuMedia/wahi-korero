@@ -53,12 +53,10 @@ class SegmenterIntegrationTests(unittest.TestCase):
         self.segmenter = default_segmenter()
         self.segmenter.disable_captioning()
 
-    # These tests only test segment_streams -> I haven't fixed segment audio
-    # therefore their tests aren't included here
-    # This tests whether the segment_stream runs successfully with an audio
-    # file of silence - returns blocks of segment limit
     def test_silence(self):
-
+        """
+        We should get 1 caption the entire duration of silence
+        """
         segmenter = Segmenter(**self.kaituhi_config)
         segmenter.enable_captioning(
             caption_threshold_ms=10,
@@ -72,17 +70,21 @@ class SegmenterIntegrationTests(unittest.TestCase):
         assert round(end) == 600  # one long silent caption
 
     def test_max_caption_of_silence(self):
-
+        """
+        We should get silence captions broken up into max cap len
+        """
         segmenter = Segmenter(**self.kaituhi_config)
         segmenter.enable_captioning(
             caption_threshold_ms=10,
-            min_caption_len_ms=10000,
+            min_caption_len_ms=1000,
             max_caption_len_ms=100 * 1000,
         )
 
         stream = segmenter.segment_stream(self.silence_path, output_audio=False)
         for seg, audio in stream:
             start, end, voiced = seg
+            print((start), (end), (end - start))
+            assert round(end - start) <= 100
 
         assert round(end) == 600  # one long silent caption
 

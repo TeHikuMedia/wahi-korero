@@ -343,7 +343,7 @@ class Segmenter(object):
 
         return audio
 
-    def _vad_pass(self, sample_rate, vad, frames: _Frame):
+    def _vad_collector(self, sample_rate, vad, frames: _Frame):
         """
         Construct a generator which will yield segments of voiced audio using a webrtcvad voice-activity detector.
 
@@ -382,36 +382,13 @@ class Segmenter(object):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
             # compatible. See: https://github.com/wiseman/py-webrtcvad/blob/master/webrtcvad.py
-            try:
-                is_speech = vad.is_speech(frame.bytes, sample_rate)
-                if start_logging:
-                    print(frame.duration, frame.bytes, sample_rate)
-            except Exception:
-                # TODO: Investigate why we need this exception
-                # A strange bug showed up when modifying the
-                # _caption_generator function to handle merging of silent
-                # captions. For some reason this function errors but they seem
-                # unrelated. I wonder if it's a memory issue.
-                is_speech = False
+            is_speech = vad.is_speech(frame.bytes, sample_rate)
 
             # Add frame to the buffer. If enough of the frames are voiced, start collecting frames into a segmenter. Any
             # frames currently in the buffer are part of this new segment.
             if not collecting_voiced_frames:
                 buffer.append((frame, is_speech))
                 silence_frames.append(frame)
-
-                if (
-                    self.max_caption_len_ms
-                    and len(silence_frames) * frame.duration
-                    > self.max_caption_len_ms / 1000
-                ):
-                    yield (
-                        silence_frames[0].timestamp,
-                        silence_frames[-1].timestamp,
-                        False,
-                    )
-                    silence_frames = []
-                    buffer.clear()
 
                 num_voiced = len([f for f, spoken in buffer if spoken])
                 if num_voiced > threshold_voice:
@@ -420,6 +397,7 @@ class Segmenter(object):
                         len(silence_frames) * frame.duration
                         >= silence_segment_min_duration
                     ):
+                        # ideally we remove the voiced from the buffer from this
                         yield (
                             silence_frames[0].timestamp,
                             silence_frames[-1].timestamp,
@@ -431,10 +409,25 @@ class Segmenter(object):
                         for f, _ in buffer:
                             voiced_frames.append(f)
                         buffer.clear()
+                else:
+
+                    if (
+                        self.max_caption_len_ms
+                        and len(silence_frames) * frame.duration
+                        > self.max_caption_len_ms / 1000
+                    ):
+                        yield (
+                            silence_frames[0].timestamp,
+                            silence_frames[-1].timestamp,
+                            False,
+                        )
+                        silence_frames = []
+                        buffer.clear()
 
             # If enough of the buffer is unvoiced, we've reached the end of this segment. Yield the data we've gathered
             # so far and reset the above variables.
             else:
+
                 voiced_frames.append(frame)
                 buffer.append((frame, is_speech))
                 num_unvoiced = len([f for f, spoken in buffer if not spoken])
@@ -475,7 +468,7 @@ class Segmenter(object):
         # Set up the VAD, frame generator, and segment generator. Wrap with captioning, if that option has been set.
         frames = _frame_generator(self.frame_duration_ms, audio)
         vad = webrtcvad.Vad(self.aggression)
-        segments = self._vad_pass(audio.frame_rate, vad, frames)
+        segments = self._vad_collector(audio.frame_rate, vad, frames)
 
         if self.caption_threshold is not None:
             segments = self._caption_generator(segments, audio.duration_milliseconds)
@@ -565,9 +558,18 @@ class Segmenter(object):
         # Repeatedly merge segments until we don't hit the threshold and are over the min_len.
         for seg in segment_stream:
             distance = seg[0] - caption[1]
+
             # Merge captions if within threshold distance of each other
             if distance < threshold:
-                caption = caption[0], seg[1], seg[2]
+                # check merging doesn't go over max_caption_len, mainly for long silences
+                if (
+                    self.max_caption_len_ms
+                    and seg[1] - caption[0] > self.max_caption_len_ms / 1000
+                ):
+                    yield caption
+                    caption = seg
+                else:
+                    caption = caption[0], seg[1], seg[2]
             else:
                 # Both captions voiced
                 if caption[2] and seg[2]:
@@ -592,6 +594,7 @@ class Segmenter(object):
 
                 # Both not voiced, merge
                 else:
+
                     if (
                         self.max_caption_len_ms
                         and seg[1] - caption[0] > self.max_caption_len_ms / 1000
@@ -605,7 +608,7 @@ class Segmenter(object):
                         caption = caption[0], seg[1], seg[2]
 
         # Any silence at the end goes into the last caption.
-        caption = caption[0], track_length_ms / 1000, False
+        caption = seg[0], track_length_ms / 1000, False
         yield caption
 
     def _caption_merger(self, caption_gen):
@@ -619,7 +622,6 @@ class Segmenter(object):
 
             # min_len set
             if min_len and caption[1] - caption[0] >= min_len:
-
                 yield caption
                 caption = caption2
 
