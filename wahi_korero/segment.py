@@ -448,7 +448,11 @@ class Segmenter(object):
                         >= silence_segment_min_duration
                     ):
                         # Take a few frames before
-                        _min = -3 if len(silence_frames) > 3 else -len(silence_frames)
+                        _min = (
+                            -threshold_voice
+                            if len(silence_frames) > threshold_voice
+                            else -len(silence_frames)
+                        )
                         for _ in range(_min, 0):
                             f = silence_frames.pop()
                             voiced_frames.append(f)
