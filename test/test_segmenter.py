@@ -1,6 +1,6 @@
-
 # Make `wahi_korero` visible on sys.path
 import sys
+
 sys.path.append("..")
 
 import json
@@ -54,8 +54,11 @@ class SegmenterIntegrationTests(unittest.TestCase):
             self.fail("Unexpected error loading JSON: {}".format(e))
 
         for (_, audio), seg in zip(stream, data["segments"]):
-            self.assertEqual(round(seg["end"] - seg["start"], 3), len(audio) / 1000,
-                             "Segments in JSON file should correspond to length of audio track.")
+            self.assertEqual(
+                round(seg["end"] - seg["start"], 3),
+                len(audio) / 1000,
+                "Segments in JSON file should correspond to length of audio track.",
+            )
 
     def test_segment_against_stream(self):
         self.segmenter.segment_audio("sounds/hello.wav", output_dir, verbose=False)
@@ -68,17 +71,29 @@ class SegmenterIntegrationTests(unittest.TestCase):
             self.fail("Unexpected error loading JSON: {}".format(e))
 
         for (seg1, _), seg2 in zip(stream, data["segments"]):
-            self.assertEqual(round(seg1[0], 3), round(seg1[0], 3), "Segments should be same in stream as in json.")
-            self.assertEqual(round(seg1[1], 3), round(seg1[1], 3), "Segments should be same in stream as in json.")
+            self.assertEqual(
+                round(seg1[0], 3),
+                round(seg1[0], 3),
+                "Segments should be same in stream as in json.",
+            )
+            self.assertEqual(
+                round(seg1[1], 3),
+                round(seg1[1], 3),
+                "Segments should be same in stream as in json.",
+            )
 
     def test_non_audio(self):
         try:
             self.segmenter.segment_audio("test_segmenter.py", "out")
-            self.fail("Segmenter should have failed gracefully on unsupported file format.")
+            self.fail(
+                "Segmenter should have failed gracefully on unsupported file format."
+            )
         except FormatError:
             pass  # desired behaviour
         except:
-            self.fail("Segmenter should have failed gracefully on unsupported file format.")
+            self.fail(
+                "Segmenter should have failed gracefully on unsupported file format."
+            )
 
     def test_captioning(self):
         self.segmenter.enable_captioning(500)
@@ -89,7 +104,10 @@ class SegmenterIntegrationTests(unittest.TestCase):
         audio_len = len(audio_seg)
         self.segmenter.enable_captioning(audio_len, min_caption_len_ms=audio_len)
         caption_stream = self.segmenter.segment_stream("sounds/hello.wav")
-        self.assertEqual(len(list(caption_stream)), 1, "Should have one caption") # one caption, the whole length of the track
+        self.assertEqual(
+            len(list(caption_stream)), 1, "Should have one caption"
+        )  # one caption, the whole length of the track
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

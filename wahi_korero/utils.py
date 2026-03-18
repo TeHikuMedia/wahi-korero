@@ -1,4 +1,3 @@
-
 from .exceptions import FormatError
 import os
 from os import path
@@ -8,8 +7,16 @@ import tempfile
 
 # The segmenter is capable of loading these formats. We could probably support more, it depends on ffmpeg.
 SUPPORTED_FORMATS = [
-    "flv", "mp3", "ogg", "wav", "m4a", "mp4", "aac", "flac", "aiff",
-    "wma"
+    "flv",
+    "mp3",
+    "ogg",
+    "wav",
+    "m4a",
+    "mp4",
+    "aac",
+    "flac",
+    "aiff",
+    "wma",
 ]
 
 
@@ -26,13 +33,19 @@ def _quadraphonic_to_mono(audio):
 
     try:
         audio.export(fpath_in, format="wav")
-        ffmpeg_cmd = ["ffmpeg",
-                      "-y",  # overwrite output files without asking
-                      "-i", fpath_in,
-                      "-ac", "1",  # 1 channel
-                      "-acodec", "pcm_s16le",  # use PCM width a sample width of 16 bits = 2 bytes
-                      "-f", "wav",  # use wav format specifically
-                      fpath_out]
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",  # overwrite output files without asking
+            "-i",
+            fpath_in,
+            "-ac",
+            "1",  # 1 channel
+            "-acodec",
+            "pcm_s16le",  # use PCM width a sample width of 16 bits = 2 bytes
+            "-f",
+            "wav",  # use wav format specifically
+            fpath_out,
+        ]
 
         # Redirect stdout and stderr to DEVNULL to silence output. Do explicitly for Python 2 compatibility.
         with open(os.devnull, "w") as DEVNULL:
