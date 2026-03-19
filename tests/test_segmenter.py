@@ -100,8 +100,9 @@ class SegmenterIntegrationTests(unittest.TestCase):
         )
 
         stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
-        for seg, audio in stream:
-            start, end, voiced = seg
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
             dt = end - start
             mins = floor(dt / 60)
             secs = round(dt - mins * 60)
@@ -110,7 +111,17 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 f"{round(end):> 3.0f}",
                 f"{ mins:02.0f}:{secs:02.0f}",
             )
-            assert round(dt) <= 100
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
 
     def test_the_min_cap_length(self):
 
@@ -156,14 +167,17 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 }
             )
             print(f"{round(start):>3.0f}", f"{round(end):>3.0f}", round(end - start))
-            assert round(end - start) <= 100
 
+        # These assertions are specific as we want to make sure silence is
+        # merged int he most logical places
         assert round(caps[0]["end"]) == 100
         assert round(caps[2]["end"]) == 300
         assert round(caps[3]["end"] - caps[3]["start"]) == 30
-        assert round(caps[12]["end"]) == 607
+        assert round(caps[12]["end"]) == 614
 
         for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
             assert caps[i]["end"] == caps[i + 1]["start"]
 
     def test_max_caption(self):
