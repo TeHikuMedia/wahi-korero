@@ -567,10 +567,10 @@ class Segmenter(object):
         caption = caption_start, seg[1], seg[2]
         # Repeatedly merge segments until we don't hit the threshold and are over the min_len.
         for seg in segment_stream:
-            distance = seg[0] - caption[1]
+            gap_between_captions = seg[0] - caption[1]
 
             # Merge captions if within threshold distance of each other
-            if distance < threshold:
+            if gap_between_captions < threshold:
                 # check merging doesn't go over max_caption_len, mainly for long silences
                 if (
                     self.max_caption_len_ms
@@ -586,8 +586,9 @@ class Segmenter(object):
             else:
                 # Both captions voiced
                 if caption[2] and seg[2]:
+
                     half_distance = (
-                        float(distance) / 2
+                        float(gap_between_captions) / 2
                     )  # half goes to previous segment, half to next
                     caption = caption[0], caption[1] + half_distance, caption[2]
                     yield caption
@@ -604,13 +605,15 @@ class Segmenter(object):
                         yield caption
 
                         # if there's a large gap between these two, yield it
-                        if distance > threshold:
+                        if gap_between_captions > threshold:
                             caption = caption[1], seg[0], caption[2]
                             yield caption
                             caption = seg
                         else:
+
                             caption = caption[1], seg[0], seg[2]
                     else:
+
                         caption = caption[0], seg[0], seg[2]
                         yield caption
                         caption = seg
@@ -643,7 +646,7 @@ class Segmenter(object):
                         caption = caption[1], seg[0], caption[2]
 
                     # if there's a large gap between these two, yield it
-                    if distance > threshold:
+                    if gap_between_captions > threshold:
                         caption = caption[1], seg[0], caption[2]
                         yield caption
                         caption = seg
@@ -669,9 +672,10 @@ class Segmenter(object):
                         caption = caption[0], seg[1], seg[2]
 
         # Close off the end
+
         end = track_length_ms / 1000
-        distance = end - caption[0]
-        if self.max_caption_len_ms and distance >= self.max_caption_len_ms:
+        gap_between_captions = end - caption[0]
+        if self.max_caption_len_ms and gap_between_captions >= self.max_caption_len_ms:
             mid = caption[1] + self.max_caption_len_ms
             caption = caption[0], mid, seg[2]
             yield caption
@@ -688,30 +692,80 @@ class Segmenter(object):
             yield caption_gen
 
         caption = next(caption_gen, None)
+        silence_state = False
         while (caption2 := next(caption_gen, None)) is not None:
-            two_caption_distance = caption2[1] - caption[0]
-            caption_distance = caption[1] - caption[0]
-            # min_len set
-            if min_len and caption_distance >= min_len:
-                if caption[2] and not caption2[2]:
-                    # voiced => not voiced transition, merge backwards
-                    caption = caption[0], caption2[1], caption[2]
-                    yield caption
-                    caption = caption2[1], caption2[1], caption[2]
+            two_cap_dist = caption2[1] - caption[0]
+            prev_cap_dist = caption[1] - caption[0]
+
+            if min_len and prev_cap_dist >= min_len:
+                if not max_len:
+                    if caption[2] and not caption2[2]:
+                        # voiced => not voiced transition, merge backwards
+                        caption = caption[0], caption2[1], caption[2]
+                        yield caption
+                        caption = caption2[1], caption2[1], caption[2]
+                    else:
+                        yield caption
+                        caption = caption2
                 else:
-                    yield caption
-                    caption = caption2
+
+                    #  left voiced    right silent, don't merge
+                    if caption[2] and not caption2[2]:
+
+                        if two_cap_dist < max_len:
+                            caption = caption[0], caption2[1], caption2[2]
+                        else:
+
+                            yield caption
+                            caption = caption2  # caption2[0], caption2[1], caption[2]
+                    # left silent     right voiced, merge
+                    elif not caption[2] and caption2[2]:
+                        if two_cap_dist >= max_len:
+
+                            yield caption
+                            caption = (
+                                caption2[0],
+                                caption2[1],
+                                False,
+                            )  # actually unvoiced
+
+                            silence_state = True
+                        elif silence_state:  # fynny state
+                            silence_state = False
+                            yield caption
+                            caption = caption2
+                        else:
+                            caption = caption[0], caption2[1], caption2[2]
+                    # both voiced
+                    elif caption[2] and caption2[2]:
+                        # merge
+                        if two_cap_dist < max_len:
+                            caption = caption[0], caption2[1], caption2[2]
+                        else:
+                            yield caption
+                            caption = caption2
+                    # both silent:
+                    elif not caption[2] and not caption2[2]:
+                        # merge
+                        if two_cap_dist < max_len:
+                            caption = caption[0], caption2[1], caption2[2]
+                        else:
+                            yield caption
+                            caption = caption2
 
             # caption not long enough
-            elif min_len and caption_distance < min_len:
+            elif min_len and prev_cap_dist < min_len:
                 # merge will break max_limit
-                if max_len and two_caption_distance > max_len:
+                if max_len and two_cap_dist > max_len:
+                    caption = caption[0], caption2[0], caption[2]
+                    yield caption
                     caption = caption2
                 else:
                     caption = caption[0], caption2[1], caption2[2]
+
             else:
                 # min_len not used, max_len set
-                if max_len and two_caption_distance >= max_len:
+                if max_len and two_cap_dist >= max_len:
                     yield caption
                     caption = caption2
                 else:
