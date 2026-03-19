@@ -570,12 +570,13 @@ class Segmenter(object):
 
             # Merge captions if within threshold distance of each other
             if distance < threshold:
-
                 # check merging doesn't go over max_caption_len, mainly for long silences
                 if (
                     self.max_caption_len_ms
                     and seg[1] - caption[0] > self.max_caption_len_ms / 1000
                 ):
+                    # take care of gap between caps
+                    caption = caption[0], seg[0], caption[2]
                     yield caption
                     caption = seg
                 else:
@@ -593,12 +594,12 @@ class Segmenter(object):
 
                 # left not voiced, right voiced, all goes to previous
                 elif not caption[2] and seg[2]:
-
                     # don't merge both if max_len
                     if (
                         self.max_caption_len_ms
                         and seg[0] - caption[0] > self.max_caption_len_ms / 1000
                     ):
+                        # handle the gap?
                         yield caption
 
                         # if there's a large gap between these two, yield it
@@ -668,14 +669,15 @@ class Segmenter(object):
 
         # Close off the end
         end = track_length_ms / 1000
-        distance = end - seg[0]
+        distance = end - caption[0]
         if self.max_caption_len_ms and distance >= self.max_caption_len_ms:
-            mid = seg[0] + self.max_caption_len_ms
-            caption = seg[0], mid, seg[2]
+            mid = caption[1] + self.max_caption_len_ms
+            caption = caption[0], mid, seg[2]
             yield caption
             caption = mid, end, seg[2]
+            yield caption
         else:
-            caption = seg[0], end, seg[2]
+            caption = caption[0], end, seg[2]
             yield caption
 
     def _caption_merger(self, caption_gen):
