@@ -390,6 +390,38 @@ class SegmenterIntegrationTests(unittest.TestCase):
             len(list(caption_stream)), 1, "Should have one caption"
         )  # one caption, the whole length
 
+    def test_failure_not_end_silence(self):
+        """
+        A file that ends hard, no silence, tests final yield in caption.
+        Tests a failure mode we encountered in writing this code.
+        """
+        config = {**self.kaituhi_config, "squash_rate": 8000}
+        segmenter = Segmenter(**config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10 * 1000,
+            max_caption_len_ms=100 * 1000,
+        )
+        path = os.path.join(find_base_path(), "tests", "sounds/no_end_silence.m4a")
+        stream = segmenter.segment_stream(path, output_audio=False)
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
+            dt = end - start
+            mins = floor(dt / 60)
+            secs = round(dt - mins * 60)
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
