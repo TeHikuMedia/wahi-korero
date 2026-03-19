@@ -373,11 +373,14 @@ class Segmenter(object):
         voiced_frames = []
         silence_frames = []
 
+        # For captioning, we wan to yield silence
+        yield_silence = False
+        if self.caption_threshold:
+            yield_silence = True
         silence_segment_min_duration = 3  # seconds
         if self.min_caption_len_ms:
             silence_segment_min_duration = self.min_caption_len_ms / 1000
 
-        start_logging = False
         for i, frame in enumerate(frames):
 
             # `is_speech` does a non-backwards compatible division operation, but casts it to `int` which makes it
@@ -394,15 +397,22 @@ class Segmenter(object):
                 if num_voiced > threshold_voice:
                     collecting_voiced_frames = True
                     if (
-                        len(silence_frames) * frame.duration
+                        yield_silence
+                        and len(silence_frames) * frame.duration
                         >= silence_segment_min_duration
                     ):
-                        # ideally we remove the voiced from the buffer from this
+                        # ideally we remove the voiced from the buffer
+                        ind = [i[1] for i in buffer].index(True)
+                        start_frame, _ = buffer[ind]
+                        frame_index = silence_frames.index(start_frame)
+                        print(frame_index)
                         yield (
                             silence_frames[0].timestamp,
-                            silence_frames[-1].timestamp,
+                            silence_frames[frame_index].timestamp,
                             False,
                         )
+                        for i in range(frame_index + 1, len(silence_frames)):
+                            voiced_frames.append(silence_frames[i])
                     else:
                         for f, _ in buffer:
                             voiced_frames.append(f)
@@ -440,7 +450,7 @@ class Segmenter(object):
         # If we have any leftover voiced audio when we run out of input, yield it.
         if voiced_frames:
             yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp, True
-        else:
+        elif yield_silence:
             yield silence_frames[0].timestamp, silence_frames[-1].timestamp, False
 
     def segment_stream(self, audio_fpath, output_audio=False):
