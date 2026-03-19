@@ -183,7 +183,6 @@ class SegmenterIntegrationTests(unittest.TestCase):
         # Below assertions are essential, DO NOT CHANGE
         # these ensure the small amounts of voiced frames in the buffer that
         # triggers a voice frame collection is included with the voiced frames.
-
         assert caps[3]["end"] == 330.3
         assert caps[10]["end"] == 414.36
 
