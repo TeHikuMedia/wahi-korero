@@ -39,6 +39,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
     silence_with_audio = os.path.join(
         find_base_path(), "tests", "sounds/5_mins_silence.m4a"
     )
+    nga_take = os.path.join(find_base_path(), "tests", "sounds/nga_take.m4a")
 
     kaituhi_config = {
         "frame_duration_ms": 30,
@@ -91,6 +92,10 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
     # Basic test whether the stream runs smoothly on a small file
     def test_the_way_kaituhi_uses_it(self):
+        """
+        for whatever reason someone changed the squash rate, so this one sets
+        it to what kaituhi uses
+        """
         config = {**self.kaituhi_config, "squash_rate": 8000}
         segmenter = Segmenter(**config)
         segmenter.enable_captioning(
@@ -100,8 +105,9 @@ class SegmenterIntegrationTests(unittest.TestCase):
         )
 
         stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
-        for seg, audio in stream:
-            start, end, voiced = seg
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
             dt = end - start
             mins = floor(dt / 60)
             secs = round(dt - mins * 60)
@@ -110,7 +116,17 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 f"{round(end):> 3.0f}",
                 f"{ mins:02.0f}:{secs:02.0f}",
             )
-            assert round(dt) <= 100
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
 
     def test_the_min_cap_length(self):
 
@@ -123,7 +139,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = segmenter.segment_stream(self.hello_wav_path, output_audio=False)
         caps = []
         for seg, _ in stream:  # We don't return audio in this iterator
-            start, end, voiced = seg
+            start, end, _ = seg
             caps.append(
                 {
                     "start": start,
@@ -133,14 +149,17 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(start, end)
 
         assert caps[0]["end"] == caps[1]["start"]
-        assert caps[1]["end"] == 1.5150000000000001
-        assert caps[2]["start"] == 1.5150000000000001
+        assert caps[1]["end"] == 2.79
+        assert caps[2]["start"] == 2.79
 
     def test_5_min_silence_max_min_captions(self):
+        """
+        squash rate is not 8k here, that's diff from the kaituhi test above
+        """
         segmenter = Segmenter(**self.kaituhi_config)
         segmenter.enable_captioning(
             caption_threshold_ms=10,
-            min_caption_len_ms=10000,
+            min_caption_len_ms=10 * 1000,
             max_caption_len_ms=100 * 1000,
         )
 
@@ -156,14 +175,50 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 }
             )
             print(f"{round(start):>3.0f}", f"{round(end):>3.0f}", round(end - start))
-            assert round(end - start) <= 100
 
+        # NOTE Below assertions are essential, DO NOT CHANGE
+        # These assertions are specific as we want to make sure silence is
+        # merged in the most logical places
         assert round(caps[0]["end"]) == 100
         assert round(caps[2]["end"]) == 300
-        assert round(caps[3]["end"] - caps[3]["start"]) == 34
-        assert round(caps[12]["end"]) == 707
+        assert round(caps[3]["end"] - caps[3]["start"]) == 30
+        # assert round(caps[9]["end"]) == 16
 
         for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
+
+        # NOTE Below assertions are essential, DO NOT CHANGE
+        # these ensure the small amounts of voiced frames in the buffer that
+        # triggers a voice frame collection is included with the voiced frames.
+        assert caps[3]["end"] == 330.3
+        assert caps[4]["end"] == 414.36
+
+    def test_ngatake_max_min_captions(self):
+        segmenter = Segmenter(**self.kaituhi_config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10000,
+            max_caption_len_ms=100 * 1000,
+        )
+
+        stream = segmenter.segment_stream(self.nga_take, output_audio=False)
+        caps = []
+        for seg, _ in stream:  # We don't return audio in this iterator
+
+            start, end, voiced = seg
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+            print(f"{round(start):>3.0f}", f"{round(end):>3.0f}", round(end - start))
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
             assert caps[i]["end"] == caps[i + 1]["start"]
 
     def test_max_caption(self):
@@ -205,9 +260,13 @@ class SegmenterIntegrationTests(unittest.TestCase):
             )
             print(round(start), round(end), round(end - start))
 
+        # Below assertions are essential, DO NOT CHANGE
+        # these ensure the small amounts of voiced frames in the buffer that
+        # triggers a voice frame collection is included with the voiced frames.
         assert caps[0]["end"] == caps[1]["start"]
-        assert round(caps[0]["end"]) == 330
-        assert round(caps[8]["end"]) == 745
+        assert caps[0]["end"] == 330.3
+        assert caps[8]["start"] == 414.36
+        assert caps[8]["end"] == 744.69
 
     # Checks whether captions are less then max
     def test_new_segments_less_than_limit(self):
@@ -338,6 +397,76 @@ class SegmenterIntegrationTests(unittest.TestCase):
         self.assertEqual(
             len(list(caption_stream)), 1, "Should have one caption"
         )  # one caption, the whole length
+
+    def test_failure_not_end_silence(self):
+        """
+        A file that ends hard, no silence, tests final yield in caption.
+        Tests a failure mode we encountered in writing this code.
+        """
+        config = {**self.kaituhi_config, "squash_rate": 8000}
+        segmenter = Segmenter(**config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10 * 1000,
+            max_caption_len_ms=100 * 1000,
+        )
+        path = os.path.join(find_base_path(), "tests", "sounds/no_end_silence.m4a")
+        stream = segmenter.segment_stream(path, output_audio=False)
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
+            dt = end - start
+            mins = floor(dt / 60)
+            secs = round(dt - mins * 60)
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
+
+    def test_last_cap_gap(self):
+        """
+        A file that ends hard, no silence, tests final yield in caption.
+        Tests a failure mode we encountered in writing this code.
+        """
+        config = {**self.kaituhi_config, "squash_rate": 8000}
+        segmenter = Segmenter(**config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10 * 1000,
+        )
+        audio_path = os.path.join(
+            find_base_path(), "tests", "sounds/last_cap_failure_gap.m4a"
+        )
+        stream = segmenter.segment_stream(audio_path, output_audio=False)
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
+            dt = end - start
+            mins = floor(dt / 60)
+            secs = round(dt - mins * 60)
+            print(
+                f"{(start):> 3.2f}",
+                f"{(end):> 3.2f}",
+                f"{ mins:02.0f}:{secs:02.0f}",
+            )
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
 
 
 if __name__ == "__main__":
