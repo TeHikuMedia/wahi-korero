@@ -405,7 +405,6 @@ class Segmenter(object):
                         ind = [i[1] for i in buffer].index(True)
                         start_frame, _ = buffer[ind]
                         frame_index = silence_frames.index(start_frame)
-                        print(frame_index)
                         yield (
                             silence_frames[0].timestamp,
                             silence_frames[frame_index].timestamp,
@@ -616,7 +615,6 @@ class Segmenter(object):
 
                 # left voiced, right not voiced
                 elif caption[2] and not seg[2]:
-
                     # Handle gap
                     # Check gap can merge left
                     if (
@@ -632,6 +630,11 @@ class Segmenter(object):
                         caption = seg
 
                     # otherwise yield it
+                    elif not self.max_caption_len_ms and self.caption_threshold:
+                        # No max set, left merge voiced in captioning on
+                        caption = caption[0], seg[0], False
+                        yield caption
+                        caption = seg
                     else:
                         caption = caption[0], caption[1], caption[2]
                         yield caption

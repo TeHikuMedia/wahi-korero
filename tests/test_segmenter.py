@@ -134,7 +134,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = segmenter.segment_stream(self.hello_wav_path, output_audio=False)
         caps = []
         for seg, _ in stream:  # We don't return audio in this iterator
-            start, end, voiced = seg
+            start, end, _ = seg
             caps.append(
                 {
                     "start": start,
@@ -144,8 +144,8 @@ class SegmenterIntegrationTests(unittest.TestCase):
             print(start, end)
 
         assert caps[0]["end"] == caps[1]["start"]
-        assert caps[1]["end"] == 1.5150000000000001
-        assert caps[2]["start"] == 1.5150000000000001
+        assert caps[1]["end"] == 2.79
+        assert caps[2]["start"] == 2.79
 
     def test_5_min_silence_max_min_captions(self):
         segmenter = Segmenter(**self.kaituhi_config)
@@ -179,6 +179,13 @@ class SegmenterIntegrationTests(unittest.TestCase):
             assert round(caps[i]["end"] - caps[i]["start"]) <= 100
             assert round(caps[i]["end"] - caps[i]["start"]) >= 10
             assert caps[i]["end"] == caps[i + 1]["start"]
+
+        # Below assertions are essential, DO NOT CHANGE
+        # these ensure the small amounts of voiced frames in the buffer that
+        # triggers a voice frame collection is included with the voiced frames.
+
+        assert caps[3]["end"] == 330.3
+        assert caps[10]["end"] == 414.36
 
     def test_max_caption(self):
         segmenter = Segmenter(**self.kaituhi_config)
@@ -219,9 +226,13 @@ class SegmenterIntegrationTests(unittest.TestCase):
             )
             print(round(start), round(end), round(end - start))
 
+        # Below assertions are essential, DO NOT CHANGE
+        # these ensure the small amounts of voiced frames in the buffer that
+        # triggers a voice frame collection is included with the voiced frames.
         assert caps[0]["end"] == caps[1]["start"]
-        assert round(caps[0]["end"]) == 330
-        assert round(caps[8]["end"]) == 745
+        assert caps[0]["end"] == 330.3
+        assert caps[8]["start"] == 414.36
+        assert caps[8]["end"] == 744.69
 
     # Checks whether captions are less then max
     def test_new_segments_less_than_limit(self):
