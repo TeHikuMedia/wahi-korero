@@ -622,6 +622,7 @@ class Segmenter(object):
                 elif caption[2] and not seg[2]:
                     # Handle gap
                     # Check gap can merge left
+
                     if (
                         self.max_caption_len_ms
                         and seg[0] - caption[0] <= self.max_caption_len_ms / 1000
@@ -636,23 +637,15 @@ class Segmenter(object):
 
                     # otherwise yield it
                     elif not self.max_caption_len_ms and self.caption_threshold:
-                        # No max set, left merge voiced in captioning on
+                        # captioning on, No max set, left merge voiced when
                         caption = caption[0], seg[0], False
                         yield caption
                         caption = seg
+
                     else:
                         caption = caption[0], caption[1], caption[2]
                         yield caption
                         caption = caption[1], seg[0], caption[2]
-
-                    # if there's a large gap between these two, yield it
-                    if gap_between_captions > threshold:
-                        caption = caption[1], seg[0], caption[2]
-                        yield caption
-                        caption = seg
-                    # handle gap with seg
-                    else:
-                        caption = caption[1], seg[1], seg[2]
 
                 # Both not voiced, merge
                 else:
@@ -672,7 +665,6 @@ class Segmenter(object):
                         caption = caption[0], seg[1], seg[2]
 
         # Close off the end
-
         end = track_length_ms / 1000
         gap_between_captions = end - caption[0]
         if self.max_caption_len_ms and gap_between_captions >= self.max_caption_len_ms:
@@ -693,6 +685,7 @@ class Segmenter(object):
 
         caption = next(caption_gen, None)
         silence_state = False
+
         while (caption2 := next(caption_gen, None)) is not None:
             two_cap_dist = caption2[1] - caption[0]
             prev_cap_dist = caption[1] - caption[0]

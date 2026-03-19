@@ -430,7 +430,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
             assert round(caps[i]["end"] - caps[i]["start"]) >= 10
             assert caps[i]["end"] == caps[i + 1]["start"]
 
-    def test_failure_6_hour(self):
+    def test_last_cap_gap(self):
         """
         A file that ends hard, no silence, tests final yield in caption.
         Tests a failure mode we encountered in writing this code.
@@ -440,9 +440,10 @@ class SegmenterIntegrationTests(unittest.TestCase):
         segmenter.enable_captioning(
             caption_threshold_ms=10,
             min_caption_len_ms=10 * 1000,
-            max_caption_len_ms=100 * 1000,
         )
-        audio_path = os.path.join(find_base_path(), "tests", "sounds/6hourswave.wav")
+        audio_path = os.path.join(
+            find_base_path(), "tests", "sounds/last_cap_failure_gap.m4a"
+        )
         stream = segmenter.segment_stream(audio_path, output_audio=False)
         caps = []
         for seg, _ in stream:
@@ -451,8 +452,8 @@ class SegmenterIntegrationTests(unittest.TestCase):
             mins = floor(dt / 60)
             secs = round(dt - mins * 60)
             print(
-                f"{round(start):> 3.0f}",
-                f"{round(end):> 3.0f}",
+                f"{(start):> 3.2f}",
+                f"{(end):> 3.2f}",
                 f"{ mins:02.0f}:{secs:02.0f}",
             )
             caps.append(
