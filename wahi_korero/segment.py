@@ -3,7 +3,6 @@ Adapted from https://github.com/wiseman/py-webrtcvad/blob/master/example.py
 """
 
 import json
-import logging
 from collections import deque
 from os import path
 
@@ -11,9 +10,6 @@ import webrtcvad
 
 from .exceptions import ConfigError, FormatError
 from .utils import open_audio
-
-logger = logging.getLogger()
-
 
 # Default parameters that you can use to create your own `Segmenter` objects.
 DEFAULT_CONFIG = {
@@ -561,14 +557,6 @@ class Segmenter(object):
         caption = caption_start, seg[1], seg[2]
         # Repeatedly merge segments until we don't hit the threshold and are over the min_len.
         for seg in segment_stream:
-            if seg[0] < caption[1]:
-                logger.warning(
-                    "next utterance timestamps before previous: %s < %s\n%s %s",
-                    seg[0],
-                    caption[1],
-                    caption,
-                    seg,
-                )
             distance = seg[0] - caption[1]
 
             # Merge captions if within threshold distance of each other
