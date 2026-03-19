@@ -1,0 +1,15 @@
+{
+  "track_duration": 27.64,
+  "num_segments": 2,
+  "track_name": "STING 30 secs.mp4",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 10.68
+    },
+    {
+      "start": 10.71,
+      "end": 27.51
+    }
+  ]
+}

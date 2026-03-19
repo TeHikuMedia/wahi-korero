@@ -13,4 +13,9 @@ setup(
         "pydub==0.22.1",
         "webrtcvad==2.0.10",
     ],
+    entry_points={
+        "console_scripts": [
+            "wahi_korero = wahi_korero.cli:main",
+        ]
+    },
 )

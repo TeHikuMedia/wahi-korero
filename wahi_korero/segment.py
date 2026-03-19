@@ -450,7 +450,8 @@ class Segmenter(object):
         if voiced_frames:
             yield voiced_frames[0].timestamp, voiced_frames[-1].timestamp, True
         elif yield_silence:
-            yield silence_frames[0].timestamp, silence_frames[-1].timestamp, False
+            if len(silence_frames) >= 2:
+                yield silence_frames[0].timestamp, silence_frames[-1].timestamp, False
 
     def segment_stream(self, audio_fpath, output_audio=False):
         """
