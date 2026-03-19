@@ -617,7 +617,7 @@ class Segmenter(object):
                             caption[0],
                             seg[0],
                             seg[2],
-                        )  # send false so merger handles
+                        )  # send unvoiced seg[2] so merger handles
                         yield caption
                         caption = seg
 
@@ -678,7 +678,7 @@ class Segmenter(object):
             # min_len set
             if min_len and caption_distance >= min_len:
                 if caption[2] and not caption2[2]:
-                    # voiced => not voiced and merge backwards
+                    # voiced => not voiced transition, merge backwards
                     caption = caption[0], caption2[1], caption[2]
                     yield caption
                     caption = caption2[1], caption2[1], caption[2]
