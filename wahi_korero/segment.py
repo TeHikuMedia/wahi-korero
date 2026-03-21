@@ -872,7 +872,7 @@ class Segmenter(object):
         if (
             target_caption_len_ms is not None
             and max_caption_len_ms is not None
-            and target_caption_len_ms < max_caption_len_ms
+            and target_caption_len_ms > max_caption_len_ms
         ):
             raise ConfigError(
                 "`enable_captioning` must be called with "
