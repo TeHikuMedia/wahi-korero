@@ -56,6 +56,9 @@ def caption(path, directory):
             "squash_rate": 8000,
         }
     )
+    segmenter.enable_captioning(
+        caption_threshold_ms=10, min_caption_len_ms=5000, max_caption_len_ms=20000
+    )
     if directory:
         output_audio = True
     else:

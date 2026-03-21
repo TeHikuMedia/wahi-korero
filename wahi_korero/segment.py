@@ -4,10 +4,13 @@ Adapted from https://github.com/wiseman/py-webrtcvad/blob/master/example.py
 
 import json
 from collections import deque
+from math import ceil
 from os import path
+from tempfile import NamedTemporaryFile
 
 import webrtcvad
 
+from .audiosegment import MyAudioSegment as AudioSegment
 from .exceptions import ConfigError, FormatError
 from .utils import open_audio
 
@@ -453,7 +456,7 @@ class Segmenter(object):
             if len(silence_frames) >= 2:
                 yield silence_frames[0].timestamp, silence_frames[-1].timestamp, False
 
-    def segment_stream(self, audio_fpath, output_audio=False):
+    def segment_stream(self, audio_fpath, output_audio=False, _aggression=None):
         """
         Create a generator which segments the audio at `audio_fpath`, yielding successive segments.
 
@@ -477,7 +480,11 @@ class Segmenter(object):
 
         # Set up the VAD, frame generator, and segment generator. Wrap with captioning, if that option has been set.
         frames = _frame_generator(self.frame_duration_ms, audio)
-        vad = webrtcvad.Vad(self.aggression)
+        if not _aggression:
+            aggression = self.aggression
+        else:
+            aggression = _aggression
+        vad = webrtcvad.Vad(aggression)
         segments = self._vad_collector(audio.frame_rate, vad, frames)
 
         if self.caption_threshold is not None:
@@ -488,8 +495,15 @@ class Segmenter(object):
             ):
                 segments = self._caption_merger(segments)
 
+        # Use adaptive regression if max length
+        if self.max_caption_len_ms:
+            segments = self._enforce_max_length(segments, og_audio)
+
         for segment in segments:
-            if not output_audio:
+            if _aggression:
+                # Since we pass aggression, this is a recursive call
+                yield segment
+            elif not output_audio:
                 yield segment, None
             else:
                 yield segment, og_audio[segment[0] * 1000 : segment[1] * 1000]
@@ -831,3 +845,28 @@ class Segmenter(object):
     def disable_captioning(self):
         """Disables captioning on this segmenter. Captioning can be turned on with `enable_captioning`."""
         self.caption_threshold = None
+
+    def _enforce_max_length(self, segments, audio):
+        """
+        For captions whose length is too long, we apply an adaptive regression.
+        """
+
+        aggression = self.aggression + 1
+
+        if aggression > 3:
+            for seg in segments:
+                yield seg
+
+        max_len = ceil((self.max_caption_len_ms + self.caption_threshold) / 1000)
+        while (segment := next(segments, None)) is not None:
+            if segment[1] - segment[0] > max_len:
+                sliced_audio = audio[segment[0] * 1000 : segment[1] * 1000]
+                with NamedTemporaryFile(suffix=".wav") as sub_audio:
+                    sliced_audio.export(sub_audio.name)
+                    sub_segments = self.segment_stream(
+                        sub_audio.name, _aggression=aggression
+                    )
+                    for seg in sub_segments:
+                        yield seg
+            else:
+                yield segment
