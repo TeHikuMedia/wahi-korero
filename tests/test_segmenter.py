@@ -468,6 +468,43 @@ class SegmenterIntegrationTests(unittest.TestCase):
             assert round(caps[i]["end"] - caps[i]["start"]) >= 10
             assert caps[i]["end"] == caps[i + 1]["start"]
 
+    # Basic test whether the stream runs smoothly on a small file
+    def test_recursive_aggression(self):
+        """
+        start with aggression 1, and go for it.
+        """
+        config = {**self.kaituhi_config, "squash_rate": 8000, "aggression": 1}
+        segmenter = Segmenter(**config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10 * 1000,
+            max_caption_len_ms=100 * 1000,
+        )
+
+        stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
+            dt = end - start
+            mins = floor(dt / 60)
+            secs = round(dt - mins * 60)
+            print(
+                f"{round(start):> 3.0f}",
+                f"{round(end):> 3.0f}",
+                f"{ mins:02.0f}:{secs:02.0f}",
+            )
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

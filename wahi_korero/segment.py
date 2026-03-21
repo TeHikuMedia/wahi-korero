@@ -496,8 +496,8 @@ class Segmenter(object):
                 segments = self._caption_merger(segments)
 
         # Use adaptive regression if max length
-        if self.max_caption_len_ms:
-            segments = self._enforce_max_length(segments, og_audio)
+        if self.max_caption_len_ms and aggression < 3:
+            segments = self._enforce_max_length(segments, og_audio, aggression + 1)
 
         for segment in segments:
             if _aggression:
@@ -846,16 +846,10 @@ class Segmenter(object):
         """Disables captioning on this segmenter. Captioning can be turned on with `enable_captioning`."""
         self.caption_threshold = None
 
-    def _enforce_max_length(self, segments, audio):
+    def _enforce_max_length(self, segments, audio, aggression):
         """
         For captions whose length is too long, we apply an adaptive regression.
         """
-
-        aggression = self.aggression + 1
-
-        if aggression > 3:
-            for seg in segments:
-                yield seg
 
         max_len = ceil((self.max_caption_len_ms + self.caption_threshold) / 1000)
         while (segment := next(segments, None)) is not None:
