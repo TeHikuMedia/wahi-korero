@@ -253,6 +253,7 @@ class Segmenter(object):
         caption_threshold=None,
         min_caption_len_ms=None,
         max_caption_len_ms=None,
+        target_caption_len_ms=None,
     ):
 
         self.frame_duration_ms = frame_duration_ms
@@ -264,6 +265,7 @@ class Segmenter(object):
         self.caption_threshold = caption_threshold
         self.min_caption_len_ms = min_caption_len_ms
         self.max_caption_len_ms = max_caption_len_ms
+        self.target_caption_len_ms = target_caption_len_ms
         self._check_parameters()
 
     def _check_parameters(self):
@@ -694,6 +696,15 @@ class Segmenter(object):
     def _caption_merger(self, caption_gen):
         min_len = self.min_caption_len_ms / 1000 if self.min_caption_len_ms else None
         max_len = self.max_caption_len_ms / 1000 if self.max_caption_len_ms else None
+
+        # If a target length is supplied, then we merge up to that length
+        if self.target_caption_len_ms:
+            max_len = (
+                self.target_caption_len_ms / 1000
+                if self.target_caption_len_ms
+                else None
+            )
+
         if not min_len and not max_len:
             yield caption_gen
 
@@ -783,7 +794,11 @@ class Segmenter(object):
         yield caption
 
     def enable_captioning(
-        self, caption_threshold_ms, min_caption_len_ms=None, max_caption_len_ms=None
+        self,
+        caption_threshold_ms,
+        min_caption_len_ms=None,
+        max_caption_len_ms=None,
+        target_caption_len_ms=None,
     ):
         """
         Enable captioning on this `Segmenter`. After segmenting a track, it will merge segments within
@@ -811,6 +826,11 @@ class Segmenter(object):
                 f"`enable_captioning` must be called with `max_caption_len_ms` as an `int`, but it was"
                 f" called with a `{type(min_caption_len_ms)}`"
             )
+        if type(target_caption_len_ms) not in [int, type(None)]:
+            raise TypeError(
+                f"`enable_captioning` must be called with `max_caption_len_ms` as an `int`, but it was"
+                f" called with a `{type(min_caption_len_ms)}`"
+            )
         if caption_threshold_ms < 0:
             raise ConfigError(
                 "`enable_captioning` must be called with "
@@ -826,13 +846,37 @@ class Segmenter(object):
                 "`enable_captioning` must be called with `max_caption_len_ms`"
                 f"> 0, but it is `{max_caption_len_ms}`"
             )
+        if target_caption_len_ms is not None and target_caption_len_ms <= 0:
+            raise ConfigError(
+                "`enable_captioning` must be called with `max_caption_len_ms`"
+                f"> 0, but it is `{max_caption_len_ms}`"
+            )
         if (
             max_caption_len_ms is not None
             and min_caption_len_ms is not None
             and max_caption_len_ms <= min_caption_len_ms
         ):
             raise ConfigError(
-                "`enable_captioning` must be called with `min_caption_len_ms` < `max_caption_len_ms`"
+                "`enable_captioning` must be called with "
+                "`min_caption_len_ms` < `max_caption_len_ms`"
+            )
+        if (
+            target_caption_len_ms is not None
+            and min_caption_len_ms is not None
+            and target_caption_len_ms <= min_caption_len_ms
+        ):
+            raise ConfigError(
+                "`enable_captioning` must be called with "
+                "`min_caption_len_ms` < `target_caption_len_ms`"
+            )
+        if (
+            target_caption_len_ms is not None
+            and max_caption_len_ms is not None
+            and target_caption_len_ms < max_caption_len_ms
+        ):
+            raise ConfigError(
+                "`enable_captioning` must be called with "
+                "`target_caption_len_ms` < `max_caption_len_ms`"
             )
         self.caption_threshold = float(caption_threshold_ms)
         self.min_caption_len_ms = (
@@ -840,6 +884,9 @@ class Segmenter(object):
         )
         self.max_caption_len_ms = (
             float(max_caption_len_ms) if max_caption_len_ms else None
+        )
+        self.target_caption_len_ms = (
+            float(target_caption_len_ms) if target_caption_len_ms else None
         )
 
     def disable_captioning(self):
