@@ -1,14 +1,17 @@
 import json
 import sys
+from glob import glob
 from math import floor
+
+import ffmpeg
 
 sys.path.append("..")
 import os
 import unittest
-from os import path
 
-from wahi_korero import FormatError, Segmenter, default_segmenter
+from wahi_korero import Segmenter, default_segmenter
 from wahi_korero.audiosegment import MyAudioSegment
+from wahi_korero.exceptions import FormatError
 
 
 def find_base_path():
@@ -24,6 +27,12 @@ def find_base_path():
 
 
 output_dir = "tests/output"
+
+# NOTE: These files shall not be committed to our repo as its public and under
+# the Kaitiakitanga License these files are not to be "open".
+LOCAL_TEST_FILES_DIRECTORY = os.path.join(
+    find_base_path(), "tests", "sounds/local_tests"
+)
 
 
 class SegmenterIntegrationTests(unittest.TestCase):
@@ -297,7 +306,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
             )
         except FormatError:
             pass  # desired behaviour
-        except:
+        except Exception:
             self.fail(
                 "Segmenter should have failed gracefully on unsupported file format."
             )
@@ -325,7 +334,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         num_segs = sum(1 for _ in stream)
 
         try:
-            with open(path.join(outdir, "segments.json"), "r") as f:
+            with open(os.path.join(outdir, "segments.json"), "r") as f:
                 data = json.load(f)
             if "segments" not in data:
                 self.fail("JSON output has no `segments` key.")
@@ -346,7 +355,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = self.segmenter.segment_stream(self.hello_wav_path, output_audio=False)
 
         try:
-            with open(path.join(output_dir, "segments.json"), "r") as f:
+            with open(os.path.join(output_dir, "segments.json"), "r") as f:
                 data = json.load(f)
         except Exception as e:
             self.fail("Unexpected error loading JSON: {}".format(e))
@@ -366,7 +375,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = self.segmenter.segment_stream(self.hello_wav_path)
 
         try:
-            with open(path.join(output_dir, "segments.json"), "r") as f:
+            with open(os.path.join(output_dir, "segments.json"), "r") as f:
                 data = json.load(f)
         except Exception as e:
             self.fail("Unexpected error loading JSON: {}".format(e))
@@ -467,6 +476,111 @@ class SegmenterIntegrationTests(unittest.TestCase):
             assert round(caps[i]["end"] - caps[i]["start"]) <= 100
             assert round(caps[i]["end"] - caps[i]["start"]) >= 10
             assert caps[i]["end"] == caps[i + 1]["start"]
+
+    # Basic test whether the stream runs smoothly on a small file
+    def test_recursive_aggression(self):
+        """
+        start with aggression 1, and go for it.
+        """
+        config = {**self.kaituhi_config, "squash_rate": 8000, "aggression": 1}
+        segmenter = Segmenter(**config)
+        segmenter.enable_captioning(
+            caption_threshold_ms=10,
+            min_caption_len_ms=10 * 1000,
+            max_caption_len_ms=100 * 1000,
+        )
+
+        stream = segmenter.segment_stream(self.silence_with_audio, output_audio=False)
+        caps = []
+        for seg, _ in stream:
+            start, end, _ = seg
+            dt = end - start
+            mins = floor(dt / 60)
+            secs = round(dt - mins * 60)
+            print(
+                f"{round(start):> 3.0f}",
+                f"{round(end):> 3.0f}",
+                f"{ mins:02.0f}:{secs:02.0f}",
+            )
+            caps.append(
+                {
+                    "start": start,
+                    "end": end,
+                }
+            )
+
+        for i in range(len(caps) - 1):
+            assert round(caps[i]["end"] - caps[i]["start"]) <= 100
+            assert round(caps[i]["end"] - caps[i]["start"]) >= 10
+            assert caps[i]["end"] == caps[i + 1]["start"]
+
+    def test_recursive_aggression_captions_local_files(self):
+        """
+        Tests for key files
+        """
+        min_caption_len = 10
+        max_caption_len = 60 * 2
+        target_caption_len = 60
+
+        for f in glob(os.path.join(LOCAL_TEST_FILES_DIRECTORY, "*")):
+            print(f)
+            data = ffmpeg.probe(f)
+            duration = None
+            for stream in data["streams"]:
+                duration = float(stream.get("duration", None))
+            print(duration)
+
+            if duration / 60 <= 30:
+                aggression = 1
+            else:
+                aggression = 2
+
+            config = {
+                **self.kaituhi_config,
+                "squash_rate": 8000,
+                "aggression": aggression,
+            }
+            segmenter = Segmenter(**config)
+            segmenter.enable_captioning(
+                caption_threshold_ms=10,
+                min_caption_len_ms=(min_caption_len * 1000),
+                max_caption_len_ms=(max_caption_len * 1000),
+                target_caption_len_ms=(target_caption_len * 1000),
+            )
+
+            stream = segmenter.segment_stream(f, output_audio=False)
+            caps = []
+
+            seg, _ = next(stream, None)
+            while seg is not None:
+                next_seg = next(stream, None)
+                if next_seg:
+                    next_seg, _ = next_seg
+                start, end, _ = seg
+                caps.append(
+                    {
+                        "start": start,
+                        "end": end,
+                    }
+                )
+                dt = end - start
+                mins = floor(dt / 60)
+                secs = round(dt - mins * 60)
+                print(
+                    f"{round(start):> 8.0f}",
+                    f"{round(end):> 8.0f}",
+                    f"{ mins:> 5.0f}:{secs:02.0f}",
+                )
+
+                if next_seg is not None:
+                    assert round(dt) >= min_caption_len * 0.7  # allow % error.
+                    assert next_seg[0] == end
+                assert round(dt) <= max_caption_len
+
+                seg = next_seg
+
+            print()
+            del segmenter
 
 
 if __name__ == "__main__":

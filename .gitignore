@@ -81,4 +81,5 @@ output/
 
 test.*
 
-6hourswave.*
+local_tests
+segments.json
