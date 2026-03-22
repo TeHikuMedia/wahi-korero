@@ -530,7 +530,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 duration = float(stream.get("duration", None))
             print(duration)
 
-            if duration / 60 <= 60:
+            if duration / 60 <= 30:
                 aggression = 1
             else:
                 aggression = 2
