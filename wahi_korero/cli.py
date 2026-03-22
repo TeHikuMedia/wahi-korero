@@ -10,21 +10,53 @@ from wahi_korero import Segmenter
 
 
 def profile(path):
-    segmenter = Segmenter(
-        **{
-            "frame_duration_ms": 30,
-            "buffer_length_ms": 1200,
-            "threshold_silence_ms": 30,
-            "threshold_voice_ms": 120,
-            "aggression": 2,
-            "squash_rate": 8000,
-        }
-    )
-    start = time.time()
-    segmenter.segment_audio(path, "./", output_audio=False)
-    end = time.time()
-    print(f"Took {end - start:}s to run")
-    os.remove(os.path.join(os.path.abspath("./"), "segments.json"))
+    print("No captions")
+    for aggression in [1, 2, 3]:
+        for squash in [2000, 4000, 8000]:
+            print(f"Agrression: {aggression}, Squash Rate: {squash}")
+            segmenter = Segmenter(
+                **{
+                    "frame_duration_ms": 30,
+                    "buffer_length_ms": 1200,
+                    "threshold_silence_ms": 30,
+                    "threshold_voice_ms": 120,
+                    "aggression": 2,
+                    "squash_rate": 8000,
+                }
+            )
+            start = time.time()
+            segmenter.segment_audio(path, "./", output_audio=False)
+            end = time.time()
+            print(f"Took {end - start:}s to run")
+            os.remove(os.path.join(os.path.abspath("./"), "segments.json"))
+            print()
+
+    print("Captions on")
+    for aggression in [1, 2, 3]:
+        for squash in [2000, 4000, 8000]:
+            print(f"Agrression: {aggression}, Squash Rate: {squash}")
+            segmenter = Segmenter(
+                **{
+                    "frame_duration_ms": 30,
+                    "buffer_length_ms": 1200,
+                    "threshold_silence_ms": 30,
+                    "threshold_voice_ms": 120,
+                    "aggression": 2,
+                    "squash_rate": 8000,
+                }
+            )
+            start = time.time()
+            segmenter.enable_captioning(
+                caption_threshold_ms=10,
+                min_caption_len_ms=5000,
+                max_caption_len_ms=100000,
+                target_caption_len_ms=30000,
+            )
+            segmenter.segment_audio(path, "./", output_audio=False)
+            end = time.time()
+            print(f"Took {end - start:}s to run")
+            os.remove(os.path.join(os.path.abspath("./"), "segments.json"))
+            print()
 
 
 def get_voiced_segments(path, directory):
@@ -53,11 +85,14 @@ def caption(path, directory):
             "threshold_silence_ms": 30,
             "threshold_voice_ms": 120,
             "aggression": 2,
-            "squash_rate": 8000,
+            "squash_rate": 4000,
         }
     )
     segmenter.enable_captioning(
-        caption_threshold_ms=10, min_caption_len_ms=5000, max_caption_len_ms=20000
+        caption_threshold_ms=10,
+        min_caption_len_ms=5000,
+        max_caption_len_ms=20000,
+        target_caption_len_ms=30000,
     )
     if directory:
         output_audio = True

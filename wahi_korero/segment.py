@@ -10,7 +10,6 @@ from tempfile import NamedTemporaryFile
 
 import webrtcvad
 
-from .audiosegment import MyAudioSegment as AudioSegment
 from .exceptions import ConfigError, FormatError
 from .utils import open_audio
 
@@ -458,7 +457,9 @@ class Segmenter(object):
             if len(silence_frames) >= 2:
                 yield silence_frames[0].timestamp, silence_frames[-1].timestamp, False
 
-    def segment_stream(self, audio_fpath, output_audio=False, _aggression=None):
+    def segment_stream(
+        self, audio_fpath, output_audio=False, _aggression=None, offset=0
+    ):
         """
         Create a generator which segments the audio at `audio_fpath`, yielding successive segments.
 
@@ -499,7 +500,10 @@ class Segmenter(object):
 
         # Use adaptive regression if max length
         if self.max_caption_len_ms and aggression < 3:
-            segments = self._enforce_max_length(segments, og_audio, aggression + 1)
+            # print("\t" * int(aggression - 1), "break max", aggression, offset)
+            segments = self._enforce_max_length(
+                segments, og_audio, aggression + 1, offset
+            )
 
         for segment in segments:
             if _aggression:
@@ -699,11 +703,7 @@ class Segmenter(object):
 
         # If a target length is supplied, then we merge up to that length
         if self.target_caption_len_ms:
-            max_len = (
-                self.target_caption_len_ms / 1000
-                if self.target_caption_len_ms
-                else None
-            )
+            max_len = self.target_caption_len_ms / 1000
 
         if not min_len and not max_len:
             yield caption_gen
@@ -714,7 +714,6 @@ class Segmenter(object):
         while (caption2 := next(caption_gen, None)) is not None:
             two_cap_dist = caption2[1] - caption[0]
             prev_cap_dist = caption[1] - caption[0]
-
             if min_len and prev_cap_dist >= min_len:
                 if not max_len:
                     if caption[2] and not caption2[2]:
@@ -775,9 +774,15 @@ class Segmenter(object):
             elif min_len and prev_cap_dist < min_len:
                 # merge will break max_limit
                 if max_len and two_cap_dist > max_len:
-                    caption = caption[0], caption2[0], caption[2]
-                    yield caption
-                    caption = caption2
+                    if self.target_caption_len_ms:
+                        # We may recurse and make this smaller
+                        caption = caption[0], caption2[1], caption[2]
+                        yield caption
+                        caption = caption2[1], caption2[1], caption2[2]
+                    else:
+                        caption = caption[0], caption2[0], caption[2]
+                        yield caption
+                        caption = caption2
                 else:
                     caption = caption[0], caption2[1], caption2[2]
 
@@ -893,21 +898,102 @@ class Segmenter(object):
         """Disables captioning on this segmenter. Captioning can be turned on with `enable_captioning`."""
         self.caption_threshold = None
 
-    def _enforce_max_length(self, segments, audio, aggression):
+    def _enforce_max_length(self, segments, audio, aggression, offset=0):
         """
         For captions whose length is too long, we apply an adaptive regression.
         """
 
         max_len = ceil((self.max_caption_len_ms + self.caption_threshold) / 1000)
-        while (segment := next(segments, None)) is not None:
+
+        prev_seg = None
+        segment = next(segments, None)
+        while segment is not None:
+            next_segment = next(segments, None)
+            # print(
+            #     "\t" * int(aggression - 2), segment, next_segment, f"offset = {offset}"
+            # )
             if segment[1] - segment[0] > max_len:
+                sub_offset = offset + segment[0]
+                # print(
+                #     "\t" * int(aggression - 2),
+                #     "recurse with sub_offset",
+                #     sub_offset,
+                # )
+                # print("\t" * int(aggression - 2), segment, "<== breaking down")
                 sliced_audio = audio[segment[0] * 1000 : segment[1] * 1000]
                 with NamedTemporaryFile(suffix=".wav") as sub_audio:
                     sliced_audio.export(sub_audio.name)
                     sub_segments = self.segment_stream(
-                        sub_audio.name, _aggression=aggression
+                        sub_audio.name, _aggression=aggression, offset=sub_offset
                     )
-                    for seg in sub_segments:
-                        yield seg
+
+                    prev_seg = next(sub_segments)
+                    while (seg := next(sub_segments, None)) is not None:
+
+                        # in a recurse, if segments less than min, merge.
+                        if (
+                            offset > 0
+                            and self.min_caption_len_ms
+                            and (prev_seg[1] - prev_seg[0])
+                            < self.min_caption_len_ms / 1000
+                        ):
+                            # print("edge case merge", prev_seg, seg, segment)
+                            prev_seg = (
+                                round(prev_seg[0] + segment[0], 4),
+                                round(seg[0] + segment[0], 4),
+                                prev_seg[2],
+                            )
+                            yield prev_seg
+                            prev_seg = seg[0] + segment[0], seg[1] + segment[0], seg[2]
+                        else:
+                            yield (
+                                round(prev_seg[0] + segment[0], 4),
+                                round(prev_seg[1] + segment[0], 4),
+                                prev_seg[2],
+                            )
+                            prev_seg = seg
+                    # print("\t" * int(aggression - 2), "final in sub recurse")
+                    # print(
+                    #     "\t" * int(aggression - 2),
+                    #     prev_seg,
+                    #     segment,
+                    #     prev_seg[1] - prev_seg[0],
+                    #     self.min_caption_len_ms,
+                    #     self.min_caption_len_ms / 1000,
+                    # )
+
+                    yield (
+                        round(prev_seg[0] + segment[0], 4),
+                        round(prev_seg[1] + segment[0], 4),
+                        prev_seg[2],
+                    )
+                # print("\t" * int(aggression - 2), "exit sub recurse\n")
+
             else:
-                yield segment
+                if prev_seg and prev_seg[1] == segment[1]:
+                    # print("final in recuse")
+                    # print("\t" * int(aggression - 2), prev_seg)
+                    continue
+                if (
+                    prev_seg
+                    and offset > 0
+                    and self.min_caption_len_ms
+                    and (prev_seg[1] - prev_seg[0]) < self.min_caption_len_ms / 1000
+                ):
+                    segment = (
+                        round(segment[0], 4),
+                        round(next_segment[1], 4),
+                        segment[2],
+                    )
+                    yield segment
+                    segment = (
+                        round(next_segment[1], 4),
+                        round(next_segment[1], 4),
+                        segment[2],
+                    )
+                    # print("edge edge", prev_seg, segment, last)
+                    continue
+
+                yield round(segment[0], 4), round(segment[1], 4), segment[2]
+            segment = next_segment
+        # print("\t" * int(aggression - 2), "exit mazx")
