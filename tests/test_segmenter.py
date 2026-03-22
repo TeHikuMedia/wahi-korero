@@ -1,3 +1,4 @@
+import json
 import sys
 from glob import glob
 from math import floor
@@ -9,6 +10,8 @@ import os
 import unittest
 
 from wahi_korero import Segmenter, default_segmenter
+from wahi_korero.audiosegment import MyAudioSegment
+from wahi_korero.exceptions import FormatError
 
 
 def find_base_path():
@@ -303,7 +306,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
             )
         except FormatError:
             pass  # desired behaviour
-        except:
+        except Exception:
             self.fail(
                 "Segmenter should have failed gracefully on unsupported file format."
             )
@@ -331,7 +334,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         num_segs = sum(1 for _ in stream)
 
         try:
-            with open(path.join(outdir, "segments.json"), "r") as f:
+            with open(os.path.join(outdir, "segments.json"), "r") as f:
                 data = json.load(f)
             if "segments" not in data:
                 self.fail("JSON output has no `segments` key.")
@@ -352,7 +355,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = self.segmenter.segment_stream(self.hello_wav_path, output_audio=False)
 
         try:
-            with open(path.join(output_dir, "segments.json"), "r") as f:
+            with open(os.path.join(output_dir, "segments.json"), "r") as f:
                 data = json.load(f)
         except Exception as e:
             self.fail("Unexpected error loading JSON: {}".format(e))
@@ -372,7 +375,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
         stream = self.segmenter.segment_stream(self.hello_wav_path)
 
         try:
-            with open(path.join(output_dir, "segments.json"), "r") as f:
+            with open(os.path.join(output_dir, "segments.json"), "r") as f:
                 data = json.load(f)
         except Exception as e:
             self.fail("Unexpected error loading JSON: {}".format(e))
