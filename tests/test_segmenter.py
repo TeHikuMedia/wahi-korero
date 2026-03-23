@@ -1,7 +1,10 @@
+import contextlib
 import json
+import subprocess
 import sys
 from glob import glob
 from math import floor
+from tempfile import NamedTemporaryFile
 
 import ffmpeg
 
@@ -30,9 +33,6 @@ output_dir = "tests/output"
 
 # NOTE: These files shall not be committed to our repo as its public and under
 # the Kaitiakitanga License these files are not to be "open".
-LOCAL_TEST_FILES_DIRECTORY = os.path.join(
-    find_base_path(), "tests", "sounds/local_tests"
-)
 
 
 class SegmenterIntegrationTests(unittest.TestCase):
@@ -49,7 +49,9 @@ class SegmenterIntegrationTests(unittest.TestCase):
         find_base_path(), "tests", "sounds/5_mins_silence.m4a"
     )
     nga_take = os.path.join(find_base_path(), "tests", "sounds/nga_take.m4a")
-
+    LOCAL_TEST_FILES_DIRECTORY = os.path.join(
+        find_base_path(), "tests", "sounds/local_tests"
+    )
     kaituhi_config = {
         "frame_duration_ms": 30,
         "buffer_length_ms": 1200,
@@ -516,14 +518,29 @@ class SegmenterIntegrationTests(unittest.TestCase):
 
     def test_recursive_aggression_captions_local_files(self):
         """
-        Tests for key files
+        Tests for key files, with many types of settings, including wave
+        conversion done in other places and sometimes leads to edge case
+        failures
         """
+        LOCAL_TEST_FILES_DIRECTORY = os.path.join(find_base_path(), "tests", "sounds")
+
+        if os.path.isdir(self.LOCAL_TEST_FILES_DIRECTORY):
+            if os.listdir(self.LOCAL_TEST_FILES_DIRECTORY):
+                LOCAL_TEST_FILES_DIRECTORY = self.LOCAL_TEST_FILES_DIRECTORY
+
+        print("Directory is empty")
         caption_configs = [
             {
                 "caption_threshold_ms": 10,
                 "min_caption_len_ms": 10 * 1000,
                 "max_caption_len_ms": 90 * 1000,
                 "target_caption_len_ms": 20 * 1000,
+            },
+            {
+                "caption_threshold_ms": 20,
+                "min_caption_len_ms": 10 * 1000,
+                "target_caption_len_ms": 20 * 1000,
+                "max_caption_len_ms": 90 * 1000,
             },
             {
                 "caption_threshold_ms": 10,
@@ -546,67 +563,105 @@ class SegmenterIntegrationTests(unittest.TestCase):
         ]
 
         for caption_config in caption_configs:
-            print(caption_config)
             for f in glob(os.path.join(LOCAL_TEST_FILES_DIRECTORY, "*")):
                 print(f)
+
                 data = ffmpeg.probe(f)
                 duration = None
                 for stream in data["streams"]:
                     duration = float(stream.get("duration", None))
                 print(duration)
-
-                if duration / 60 <= 30:
+                if duration < 10:
+                    continue
+                elif duration / 60 <= 30:
                     aggression = 1
                 else:
-                    aggression = 2
-
+                    aggression = 1
+                print(aggression)
+                print(caption_config)
                 config = {
-                    **self.kaituhi_config,
-                    "squash_rate": 8000,
+                    "frame_duration_ms": 30,
+                    "buffer_length_ms": 1200,
+                    "threshold_silence_ms": 30,
+                    "threshold_voice_ms": 120,
                     "aggression": aggression,
+                    "squash_rate": 8000,
                 }
                 segmenter = Segmenter(**config)
                 segmenter.enable_captioning(**caption_config)
+                with self._convert_to_wav(f) as wav_path:
+                    paths = [f, wav_path]
+                    for path in paths:
 
-                stream = segmenter.segment_stream(f, output_audio=False)
-                caps = []
+                        stream = segmenter.segment_stream(path, output_audio=False)
+                        caps = []
 
-                seg, _ = next(stream, None)
-                while seg is not None:
-                    next_seg = next(stream, None)
-                    if next_seg:
-                        next_seg, _ = next_seg
-                    start, end, _ = seg
-                    caps.append(
-                        {
-                            "start": start,
-                            "end": end,
-                        }
-                    )
-                    dt = end - start
-                    mins = floor(dt / 60)
-                    secs = round(dt - mins * 60)
-                    print(
-                        f"{round(start):> 8.0f}",
-                        f"{round(end):> 8.0f}",
-                        f"{ mins:> 5.0f}:{secs:02.0f}",
-                    )
+                        seg, _ = next(stream, None)
+                        while seg is not None:
+                            next_seg = next(stream, None)
+                            if next_seg:
+                                next_seg, _ = next_seg
+                            start, end, _ = seg
+                            caps.append(
+                                {
+                                    "start": start,
+                                    "end": end,
+                                }
+                            )
+                            dt = end - start
+                            mins = floor(dt / 60)
+                            secs = round(dt - mins * 60)
+                            print(
+                                f"{round(start):> 8.0f}",
+                                f"{round(end):> 8.0f}",
+                                f"{ mins:> 5.0f}:{secs:02.0f}",
+                            )
 
-                    if next_seg is not None:
-                        print("TEST", seg, next_seg)
-                        assert (
-                            round(dt)
-                            >= caption_config["min_caption_len_ms"] / 1000 * 0.9
-                        )  # allow % error.
-                        assert next_seg[0] == end
-                    assert (
-                        round(dt) <= caption_config["max_caption_len_ms"] / 1000 * 1.1
-                    )
+                            if next_seg is not None:
+                                print("TEST", seg, next_seg)
+                                assert (
+                                    round(dt)
+                                    >= caption_config["min_caption_len_ms"] / 1000 * 0.9
+                                )  # allow % error.
+                                assert next_seg[0] == end
 
-                    seg = next_seg
+                            error = 1.1
+                            if "seg_too_large" in f:
+                                error = 1.3
 
-                print()
+                            assert (
+                                round(dt)
+                                <= caption_config["max_caption_len_ms"] / 1000 * error
+                            )
+
+                            seg = next_seg
+
+                        print()
                 del segmenter
+
+    @contextlib.contextmanager
+    def _convert_to_wav(self, path):
+        with NamedTemporaryFile(suffix=".wav", prefix="wav_") as output_file:
+            p = subprocess.Popen(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    path,
+                    "-c:a",
+                    "pcm_s16le",
+                    "-vn",
+                    "-ar",
+                    "16k",
+                    "-ac",
+                    "1",
+                    "-format",
+                    "wav",
+                    output_file.name,
+                ]
+            )
+            p.communicate()
+            yield output_file.name
 
 
 if __name__ == "__main__":

@@ -84,15 +84,15 @@ def caption(path, directory):
             "buffer_length_ms": 1200,
             "threshold_silence_ms": 30,
             "threshold_voice_ms": 120,
-            "aggression": 2,
-            "squash_rate": 4000,
+            "aggression": 1,
+            "squash_rate": 8000,
         }
     )
     segmenter.enable_captioning(
-        caption_threshold_ms=10,
-        min_caption_len_ms=5000,
-        max_caption_len_ms=20000,
-        target_caption_len_ms=30000,
+        caption_threshold_ms=20,
+        min_caption_len_ms=10000,
+        target_caption_len_ms=20000,
+        max_caption_len_ms=90000,
     )
     if directory:
         output_audio = True
