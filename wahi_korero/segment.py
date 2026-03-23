@@ -976,7 +976,7 @@ class Segmenter(object):
                 # print("\t" * int(aggression - 2), "exit sub recurse\n")
 
             else:
-                if prev_seg and prev_seg[1] == segment[1]:
+                if prev_seg and prev_seg[1] == segment[1] and next_segment is not None:
                     continue
                 if (
                     prev_seg

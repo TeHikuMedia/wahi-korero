@@ -564,7 +564,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 if duration / 60 <= 30:
                     aggression = 1
                 else:
-                    aggression = 2
+                    aggression = 1
                 config = {
                     "frame_duration_ms": 30,
                     "buffer_length_ms": 1200,
