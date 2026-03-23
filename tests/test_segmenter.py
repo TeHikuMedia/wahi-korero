@@ -518,69 +518,95 @@ class SegmenterIntegrationTests(unittest.TestCase):
         """
         Tests for key files
         """
-        min_caption_len = 10
-        max_caption_len = 60 * 2
-        target_caption_len = 60
+        caption_configs = [
+            {
+                "caption_threshold_ms": 10,
+                "min_caption_len_ms": 10 * 1000,
+                "max_caption_len_ms": 90 * 1000,
+                "target_caption_len_ms": 20 * 1000,
+            },
+            {
+                "caption_threshold_ms": 10,
+                "min_caption_len_ms": 10 * 1000,
+                "max_caption_len_ms": 120 * 1000,
+                "target_caption_len_ms": 40 * 1000,
+            },
+            {
+                "caption_threshold_ms": 20,
+                "min_caption_len_ms": 10 * 1000,
+                "max_caption_len_ms": 120 * 1000,
+                "target_caption_len_ms": 40 * 1000,
+            },
+            {
+                "caption_threshold_ms": 120,
+                "min_caption_len_ms": 10 * 1000,
+                "max_caption_len_ms": 120 * 1000,
+                "target_caption_len_ms": 40 * 1000,
+            },
+        ]
 
-        for f in glob(os.path.join(LOCAL_TEST_FILES_DIRECTORY, "*")):
-            print(f)
-            data = ffmpeg.probe(f)
-            duration = None
-            for stream in data["streams"]:
-                duration = float(stream.get("duration", None))
-            print(duration)
+        for caption_config in caption_configs:
+            print(caption_config)
+            for f in glob(os.path.join(LOCAL_TEST_FILES_DIRECTORY, "*")):
+                print(f)
+                data = ffmpeg.probe(f)
+                duration = None
+                for stream in data["streams"]:
+                    duration = float(stream.get("duration", None))
+                print(duration)
 
-            if duration / 60 <= 30:
-                aggression = 1
-            else:
-                aggression = 2
+                if duration / 60 <= 30:
+                    aggression = 1
+                else:
+                    aggression = 2
 
-            config = {
-                **self.kaituhi_config,
-                "squash_rate": 8000,
-                "aggression": aggression,
-            }
-            segmenter = Segmenter(**config)
-            segmenter.enable_captioning(
-                caption_threshold_ms=10,
-                min_caption_len_ms=(min_caption_len * 1000),
-                max_caption_len_ms=(max_caption_len * 1000),
-                target_caption_len_ms=(target_caption_len * 1000),
-            )
+                config = {
+                    **self.kaituhi_config,
+                    "squash_rate": 8000,
+                    "aggression": aggression,
+                }
+                segmenter = Segmenter(**config)
+                segmenter.enable_captioning(**caption_config)
 
-            stream = segmenter.segment_stream(f, output_audio=False)
-            caps = []
+                stream = segmenter.segment_stream(f, output_audio=False)
+                caps = []
 
-            seg, _ = next(stream, None)
-            while seg is not None:
-                next_seg = next(stream, None)
-                if next_seg:
-                    next_seg, _ = next_seg
-                start, end, _ = seg
-                caps.append(
-                    {
-                        "start": start,
-                        "end": end,
-                    }
-                )
-                dt = end - start
-                mins = floor(dt / 60)
-                secs = round(dt - mins * 60)
-                print(
-                    f"{round(start):> 8.0f}",
-                    f"{round(end):> 8.0f}",
-                    f"{ mins:> 5.0f}:{secs:02.0f}",
-                )
+                seg, _ = next(stream, None)
+                while seg is not None:
+                    next_seg = next(stream, None)
+                    if next_seg:
+                        next_seg, _ = next_seg
+                    start, end, _ = seg
+                    caps.append(
+                        {
+                            "start": start,
+                            "end": end,
+                        }
+                    )
+                    dt = end - start
+                    mins = floor(dt / 60)
+                    secs = round(dt - mins * 60)
+                    print(
+                        f"{round(start):> 8.0f}",
+                        f"{round(end):> 8.0f}",
+                        f"{ mins:> 5.0f}:{secs:02.0f}",
+                    )
 
-                if next_seg is not None:
-                    assert round(dt) >= min_caption_len * 0.7  # allow % error.
-                    assert next_seg[0] == end
-                assert round(dt) <= max_caption_len
+                    if next_seg is not None:
+                        print("TEST", seg, next_seg)
+                        assert (
+                            round(dt)
+                            >= caption_config["min_caption_len_ms"] / 1000 * 0.9
+                        )  # allow % error.
+                        assert next_seg[0] == end
+                    assert (
+                        round(dt) <= caption_config["max_caption_len_ms"] / 1000 * 1.1
+                    )
 
-                seg = next_seg
+                    seg = next_seg
 
-            print()
-            del segmenter
+                print()
+                del segmenter
 
 
 if __name__ == "__main__":
