@@ -526,6 +526,12 @@ class SegmenterIntegrationTests(unittest.TestCase):
                 "target_caption_len_ms": 20 * 1000,
             },
             {
+                "caption_threshold_ms": 20,
+                "min_caption_len_ms": 10 * 1000,
+                "target_caption_len_ms": 20 * 1000,
+                "max_caption_len_ms": 90 * 1000,
+            },
+            {
                 "caption_threshold_ms": 10,
                 "min_caption_len_ms": 10 * 1000,
                 "max_caption_len_ms": 120 * 1000,
@@ -559,11 +565,13 @@ class SegmenterIntegrationTests(unittest.TestCase):
                     aggression = 1
                 else:
                     aggression = 2
-
                 config = {
-                    **self.kaituhi_config,
-                    "squash_rate": 8000,
+                    "frame_duration_ms": 30,
+                    "buffer_length_ms": 1200,
+                    "threshold_silence_ms": 30,
+                    "threshold_voice_ms": 120,
                     "aggression": aggression,
+                    "squash_rate": 8000,
                 }
                 segmenter = Segmenter(**config)
                 segmenter.enable_captioning(**caption_config)
