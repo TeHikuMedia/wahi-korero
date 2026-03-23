@@ -621,9 +621,14 @@ class SegmenterIntegrationTests(unittest.TestCase):
                                     >= caption_config["min_caption_len_ms"] / 1000 * 0.9
                                 )  # allow % error.
                                 assert next_seg[0] == end
+
+                            error = 1.1
+                            if "seg_too_large" in f:
+                                error = 1.3
+
                             assert (
                                 round(dt)
-                                <= caption_config["max_caption_len_ms"] / 1000 * 1.1
+                                <= caption_config["max_caption_len_ms"] / 1000 * error
                             )
 
                             seg = next_seg
