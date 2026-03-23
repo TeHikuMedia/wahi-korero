@@ -552,9 +552,10 @@ class SegmenterIntegrationTests(unittest.TestCase):
         ]
 
         for caption_config in caption_configs:
-            print(caption_config)
+
             for f in glob(os.path.join(LOCAL_TEST_FILES_DIRECTORY, "*")):
                 print(f)
+                print(caption_config)
                 data = ffmpeg.probe(f)
                 duration = None
                 for stream in data["streams"]:
@@ -565,6 +566,7 @@ class SegmenterIntegrationTests(unittest.TestCase):
                     aggression = 1
                 else:
                     aggression = 1
+                print(aggression)
                 config = {
                     "frame_duration_ms": 30,
                     "buffer_length_ms": 1200,

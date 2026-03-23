@@ -698,6 +698,12 @@ class Segmenter(object):
             yield caption
 
     def _caption_merger(self, caption_gen):
+        """
+        NOTE: probably need to refactor this since adding the enforce max.
+        only merge up until target, if no target then continue, then just use enforce max
+        unless we thing if they don't set a target and then provide a max... well what do we do then?
+        maybe we need to be more specific about what these two parameters offer and don't.
+        """
         min_len = self.min_caption_len_ms / 1000 if self.min_caption_len_ms else None
         max_len = self.max_caption_len_ms / 1000 if self.max_caption_len_ms else None
 
@@ -714,6 +720,7 @@ class Segmenter(object):
         while (caption2 := next(caption_gen, None)) is not None:
             two_cap_dist = caption2[1] - caption[0]
             prev_cap_dist = caption[1] - caption[0]
+
             if min_len and prev_cap_dist >= min_len:
                 if not max_len:
                     if caption[2] and not caption2[2]:
@@ -913,17 +920,20 @@ class Segmenter(object):
             next_segment = next(segments, None)
 
             # print(
-            #     "\t" * int(aggression - 2), segment, next_segment, f"offset = {offset}"
+            #     "1." + "\t" * int(aggression - 1),
+            #     segment,
+            #     next_segment,
+            #     f"offset = {offset}",
             # )
 
             if segment[1] - segment[0] > max_len:
                 sub_offset = offset + segment[0]
                 # print(
-                #     "\t" * int(aggression - 2),
+                #     "2." + "\t" * int(aggression - 1),
                 #     "recurse with sub_offset",
                 #     sub_offset,
                 # )
-                # print("\t" * int(aggression - 2), segment, "<== breaking down")
+                # print("3." + "\t" * int(aggression - 1), segment, "<== breaking down")
                 sliced_audio = audio[segment[0] * 1000 : segment[1] * 1000]
                 with NamedTemporaryFile(suffix=".wav") as sub_audio:
                     sliced_audio.export(sub_audio.name)
@@ -933,12 +943,22 @@ class Segmenter(object):
 
                     prev_seg = next(sub_segments)
                     while (seg := next(sub_segments, None)) is not None:
+                        # print("4.0" + "\t" * int(aggression - 1), prev_seg, seg)
 
-                        # in a recurse, if segments less than min, merge.
+                        if seg[0] < prev_seg[0] and seg[1] < prev_seg[1]:
+                            # print(
+                            #     "4.0.1" + "\t" * int(aggression - 1),
+                            #     "Edge case, not sure how we get here.",
+                            # )
+                            continue
+
                         if (
                             self.min_caption_len_ms
                             and (seg[1] - seg[0]) < self.min_caption_len_ms / 1000
                         ):
+                            # print(
+                            #     "4.1" + "\t" * int(aggression - 1), "in a recurse, if segments less than min, merge."
+                            # )
                             prev_seg = prev_seg[0], seg[1], seg[2]
                             # this continue justifies the extra checks below outside of this while loop
                             continue
@@ -951,7 +971,10 @@ class Segmenter(object):
                             and (prev_seg[1] - prev_seg[0])
                             < self.min_caption_len_ms / 1000
                         ):
-                            # here we merge leftwards/backwars to prevent small captions
+                            # print(
+                            #     "4.2" + "\t" * int(aggression - 1),
+                            #     "here we merge leftwards/backwards to prevent small captions",
+                            # )
                             prev_seg = (
                                 round(prev_seg[0] + segment[0], 8),
                                 round(seg[0] + segment[0], 8),
@@ -959,24 +982,40 @@ class Segmenter(object):
                             )
                             yield prev_seg
                             prev_seg = seg[0] + segment[0], seg[1] + segment[0], seg[2]
+
                         else:
+                            # print(
+                            #     "4.3" + "\t" * int(aggression - 1),
+                            #     "TODO: Add explanation",
+                            # )
                             yield (
                                 round(prev_seg[0] + segment[0], 8),
                                 round(prev_seg[1] + segment[0], 8),
                                 prev_seg[2],
                             )
                             prev_seg = seg
-                    # final yield at end of loop
+                        # print("5.\t" * int(aggression - 1), prev_seg, seg)
+
+                    # Final yield at end of loop
+                    # If 2 nested recurses finish at the end, we need to skip.
                     yield (
                         round(prev_seg[0] + segment[0], 8),
                         round(prev_seg[1] + segment[0], 8),
                         prev_seg[2],
                     )
 
-                # print("\t" * int(aggression - 2), "exit sub recurse\n")
+                # print("\t" * int(aggression - 1), "exit sub recurse\n")
 
             else:
+                # print(
+                #     "6." + "\t" * int(aggression - 1),
+                #     "segment isn't too long, yield the caption, unless...",
+                # )
                 if prev_seg and prev_seg[1] == segment[1] and next_segment is not None:
+                    # print(
+                    #     "6.1" + "\t" * int(aggression - 1),
+                    #     "explain why this",
+                    # )
                     continue
                 if (
                     prev_seg
@@ -984,6 +1023,10 @@ class Segmenter(object):
                     and self.min_caption_len_ms
                     and (prev_seg[1] - prev_seg[0]) < self.min_caption_len_ms / 1000
                 ):
+                    # print(
+                    #     "6.2" + "\t" * int(aggression - 1),
+                    #     "explain this part",
+                    # )
                     segment = (
                         round(segment[0], 8),
                         round(next_segment[1], 8),
@@ -1000,20 +1043,29 @@ class Segmenter(object):
                 if next_segment is None:
                     # The last segment may need adjustment if our recursion above ends just before this loop.
 
-                    # for some reason, the last segment in the recursion is the same as the last segment
                     if (
                         prev_seg
                         and abs(prev_seg[0] - segment[0]) < 1
                         and abs(prev_seg[1] - segment[1]) < 1
                     ):
+                        # print(
+                        #     "6.3" + "\t" * int(aggression - 1),
+                        #     "for some reason, the last segment in the recursion is the same as the last segment",
+                        # )
                         segment = prev_seg[1], segment[1], segment[2]
 
-                    # likewise as above but just for the end time
                     elif prev_seg and abs(prev_seg[1] - segment[1]) < 1:
+                        # print(
+                        #     "6.4" + "\t" * int(aggression - 1),
+                        #     "likewise as above but just for the end time",
+                        # )
                         segment = prev_seg[1], segment[1], segment[2]
 
-                    # if our last recursion segment is larger than this one, continue
                     elif prev_seg and prev_seg[1] > segment[1]:
+                        # print(
+                        #     "6.5" + "\t" * int(aggression - 1),
+                        #     "if our last recursion segment is larger than this one, continue",
+                        # )
                         continue
 
                 if (
@@ -1022,12 +1074,16 @@ class Segmenter(object):
                     and abs(prev_seg[0] - segment[0]) < 1
                     and abs(prev_seg[1] - next_segment[1]) < 1
                 ):
-                    # If we came out of a recursion that merged backwards and yielded, do not yield again.
+                    # print(
+                    #     "6.6" + "\t" * int(aggression - 1),
+                    #     "If we came out of a recursion that merged backwards and yielded, do not yield again.",
+                    # )
                     next_segment = None
                     segment = None
                     continue
+                # print("7." + "\t" * int(aggression - 1), segment)
                 yield round(segment[0], 8), round(segment[1], 8), segment[2]
 
             segment = next_segment
 
-        # print("\t" * int(aggression - 2), "exit max")
+        # print("\t" * int(aggression - 1), "exit max")
