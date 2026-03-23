@@ -906,12 +906,16 @@ class Segmenter(object):
         max_len = ceil((self.max_caption_len_ms + self.caption_threshold) / 1000)
 
         prev_seg = None
+        seg = None
         segment = next(segments, None)
+        next_segment = None
         while segment is not None:
             next_segment = next(segments, None)
+
             # print(
             #     "\t" * int(aggression - 2), segment, next_segment, f"offset = {offset}"
             # )
+
             if segment[1] - segment[0] > max_len:
                 sub_offset = offset + segment[0]
                 # print(
@@ -932,47 +936,47 @@ class Segmenter(object):
 
                         # in a recurse, if segments less than min, merge.
                         if (
+                            self.min_caption_len_ms
+                            and (seg[1] - seg[0]) < self.min_caption_len_ms / 1000
+                        ):
+                            prev_seg = prev_seg[0], seg[1], seg[2]
+                            # this continue justifies the extra checks below outside of this while loop
+                            continue
+
+                        # offset is bad if e.g. started recursion at start = 0 and entered another recursion
+                        # TODO: use something else but offset.
+                        if (
                             offset > 0
                             and self.min_caption_len_ms
                             and (prev_seg[1] - prev_seg[0])
                             < self.min_caption_len_ms / 1000
                         ):
-                            # print("edge case merge", prev_seg, seg, segment)
+                            # here we merge leftwards/backwars to prevent small captions
                             prev_seg = (
-                                round(prev_seg[0] + segment[0], 4),
-                                round(seg[0] + segment[0], 4),
+                                round(prev_seg[0] + segment[0], 8),
+                                round(seg[0] + segment[0], 8),
                                 prev_seg[2],
                             )
                             yield prev_seg
                             prev_seg = seg[0] + segment[0], seg[1] + segment[0], seg[2]
                         else:
                             yield (
-                                round(prev_seg[0] + segment[0], 4),
-                                round(prev_seg[1] + segment[0], 4),
+                                round(prev_seg[0] + segment[0], 8),
+                                round(prev_seg[1] + segment[0], 8),
                                 prev_seg[2],
                             )
                             prev_seg = seg
-                    # print("\t" * int(aggression - 2), "final in sub recurse")
-                    # print(
-                    #     "\t" * int(aggression - 2),
-                    #     prev_seg,
-                    #     segment,
-                    #     prev_seg[1] - prev_seg[0],
-                    #     self.min_caption_len_ms,
-                    #     self.min_caption_len_ms / 1000,
-                    # )
-
+                    # final yield at end of loop
                     yield (
-                        round(prev_seg[0] + segment[0], 4),
-                        round(prev_seg[1] + segment[0], 4),
+                        round(prev_seg[0] + segment[0], 8),
+                        round(prev_seg[1] + segment[0], 8),
                         prev_seg[2],
                     )
+
                 # print("\t" * int(aggression - 2), "exit sub recurse\n")
 
             else:
                 if prev_seg and prev_seg[1] == segment[1]:
-                    # print("final in recuse")
-                    # print("\t" * int(aggression - 2), prev_seg)
                     continue
                 if (
                     prev_seg
@@ -981,19 +985,49 @@ class Segmenter(object):
                     and (prev_seg[1] - prev_seg[0]) < self.min_caption_len_ms / 1000
                 ):
                     segment = (
-                        round(segment[0], 4),
-                        round(next_segment[1], 4),
+                        round(segment[0], 8),
+                        round(next_segment[1], 8),
                         segment[2],
                     )
                     yield segment
                     segment = (
-                        round(next_segment[1], 4),
-                        round(next_segment[1], 4),
+                        round(next_segment[1], 8),
+                        round(next_segment[1], 8),
                         segment[2],
                     )
-                    # print("edge edge", prev_seg, segment, last)
                     continue
 
-                yield round(segment[0], 4), round(segment[1], 4), segment[2]
+                if next_segment is None:
+                    # The last segment may need adjustment if our recursion above ends just before this loop.
+
+                    # for some reason, the last segment in the recursion is the same as the last segment
+                    if (
+                        prev_seg
+                        and abs(prev_seg[0] - segment[0]) < 1
+                        and abs(prev_seg[1] - segment[1]) < 1
+                    ):
+                        segment = prev_seg[1], segment[1], segment[2]
+
+                    # likewise as above but just for the end time
+                    elif prev_seg and abs(prev_seg[1] - segment[1]) < 1:
+                        segment = prev_seg[1], segment[1], segment[2]
+
+                    # if our last recursion segment is larger than this one, continue
+                    elif prev_seg and prev_seg[1] > segment[1]:
+                        continue
+
+                if (
+                    prev_seg
+                    and next_segment
+                    and abs(prev_seg[0] - segment[0]) < 1
+                    and abs(prev_seg[1] - next_segment[1]) < 1
+                ):
+                    # If we came out of a recursion that merged backwards and yielded, do not yield again.
+                    next_segment = None
+                    segment = None
+                    continue
+                yield round(segment[0], 8), round(segment[1], 8), segment[2]
+
             segment = next_segment
-        # print("\t" * int(aggression - 2), "exit mazx")
+
+        # print("\t" * int(aggression - 2), "exit max")
