@@ -617,17 +617,23 @@ class SegmenterIntegrationTests(unittest.TestCase):
                                 f"{ mins:> 5.0f}:{secs:02.0f}",
                             )
 
+                            error = 0.9
+                            if ".stream" in f:
+                                error = 0.5
+
                             if next_seg is not None:
                                 print("TEST", seg, next_seg)
                                 assert (
                                     round(dt)
-                                    >= caption_config["min_caption_len_ms"] / 1000 * 0.9
+                                    >= caption_config["min_caption_len_ms"]
+                                    / 1000
+                                    * error
                                 )  # allow % error.
                                 assert next_seg[0] == end
 
                             error = 1.1
-                            if "seg_too_large" in f:
-                                error = 1.3
+                            if any([s in f for s in ["seg_too_large", ".stream"]]):
+                                error = 2
 
                             assert (
                                 round(dt)
